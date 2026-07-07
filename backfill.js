@@ -46,4 +46,16 @@ function fmt(d) {
     }
   }
   console.log(`\n##### Backfill complete: ${grandFound} found, ${grandDeep} deep-scraped #####`);
+
+  // push everything up to Supabase (if configured)
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+    console.log('\n##### Pushing all data to Supabase... #####');
+    try {
+      require('child_process').execSync('node push-to-supabase.js', { stdio: 'inherit', cwd: __dirname });
+    } catch (e) {
+      console.log('Supabase push failed (run `node push-to-supabase.js` manually):', e.message);
+    }
+  } else {
+    console.log('\n(Supabase not configured - skipping cloud push)');
+  }
 })();
