@@ -5,5 +5,5 @@
 //     are what actually protect the data. The SECRET key is NEVER used here.
 window.VC_CONFIG = {
   SUPABASE_URL: 'https://hhshbogxymuscjtpwgpm.supabase.co',
-  SUPABASE_ANON_KEY: 'PASTE_PUBLISHABLE_KEY_HERE',
+  SUPABASE_ANON_KEY: 'sb_publishable_hex65tiCZl4prlhvJxOjYQ_DqYQUyWi',
 };
