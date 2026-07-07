@@ -169,7 +169,7 @@
 
       <div class="dtab" id="dt-overview">
         <div class="chart-grid">
-          <div class="chart-card wide"><h3 class="ctitle">Money flow by month — claimed vs received</h3><div class="cwrap"><canvas id="c-money"></canvas></div></div>
+          <div class="chart-card wide"><h3 class="ctitle">Cash flow by month — claims raised vs payments received</h3><p style="font-size:11px;color:var(--text-3);margin:-10px 0 12px">These are different claims: "raised" = claims you submitted that month; "received" = money that arrived that month (usually older claims, often paid in bulk batches).</p><div class="cwrap"><canvas id="c-money"></canvas></div></div>
           <div class="chart-card"><h3 class="ctitle">Where the claimed money went</h3><div class="cwrap"><canvas id="c-outcome"></canvas></div></div>
           <div class="chart-card"><h3 class="ctitle">Where claims are right now</h3><div class="cwrap"><canvas id="c-status"></canvas></div></div>
         </div>
@@ -374,8 +374,8 @@ async function loadDashboard(){
   const baseOpts=extra=>Object.assign({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:12,font:{size:11}}}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{color:gridClr},ticks:{font:{size:10}}}}},extra||{});
 
   makeChart('c-money',{type:'bar',data:{labels:mlabels,datasets:[
-    {label:'Claimed',data:months.map(k=>monMoney[k].c),backgroundColor:'#6366f1'},
-    {label:'Received',data:months.map(k=>monMoney[k].p),backgroundColor:'#10b981'}]},
+    {label:'Claims raised',data:months.map(k=>monMoney[k].c),backgroundColor:'#6366f1'},
+    {label:'Payments received',data:months.map(k=>monMoney[k].p),backgroundColor:'#10b981'}]},
     options:baseOpts({scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>inrShort(v)}}}})});
 
   const tatMonths=months.filter(k=>monTat[k]);
