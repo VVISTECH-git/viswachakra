@@ -18,6 +18,11 @@ async function chunkedUpsert(supabase, table, rows, conflictCol, chunk = 500) {
   console.log('');
 }
 
+function arg(name) {
+  const i = process.argv.indexOf('--' + name);
+  return i > -1 ? process.argv[i + 1] : null;
+}
+
 async function main() {
   if (!URL || !KEY) {
     console.error('Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env first.');
@@ -25,8 +30,20 @@ async function main() {
   }
   const supabase = createClient(URL, KEY, { auth: { persistSession: false } });
 
-  const cases = db.prepare('SELECT * FROM cases').all();
-  const workflow = db.prepare('SELECT case_no, row_index, date_time, role_name, remarks, action, amount FROM claim_workflow').all();
+  // optional: only push rows synced in the last N minutes (used for incremental per-chunk pushes)
+  const sinceMin = arg('since-minutes') ? parseInt(arg('since-minutes'), 10) : null;
+  let cases, workflow;
+  if (sinceMin) {
+    const cutoff = new Date(Date.now() - sinceMin * 60 * 1000).toISOString();
+    cases = db.prepare('SELECT * FROM cases WHERE last_synced > ?').all(cutoff);
+    const caseNos = new Set(cases.map((c) => c.case_no));
+    workflow = db.prepare('SELECT case_no, row_index, date_time, role_name, remarks, action, amount FROM claim_workflow').all()
+      .filter((w) => caseNos.has(w.case_no));
+  } else {
+    cases = db.prepare('SELECT * FROM cases').all();
+    workflow = db.prepare('SELECT case_no, row_index, date_time, role_name, remarks, action, amount FROM claim_workflow').all();
+  }
+  if (!cases.length) { console.log('Nothing new to push.'); return; }
   console.log(`Pushing ${cases.length} cases and ${workflow.length} workflow rows to Supabase...`);
 
   // cases: primary key case_no

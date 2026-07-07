@@ -41,6 +41,14 @@ function fmt(d) {
       const r = await runSync({ from, to });
       grandFound += r.totalFound;
       grandDeep += r.deepScraped;
+      // push THIS chunk's data to Supabase right away (crash-safe, watchable in real time)
+      if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+        try {
+          require('child_process').execSync('node push-to-supabase.js --since-minutes 120', { stdio: 'inherit', cwd: __dirname });
+        } catch (e) {
+          console.log('  (chunk push to Supabase failed, will retry at end):', e.message);
+        }
+      }
     } catch (err) {
       console.log(`Chunk ${i + 1} failed: ${err.message} - continuing with next chunk`);
     }
