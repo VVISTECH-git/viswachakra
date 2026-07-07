@@ -17,6 +17,16 @@ jobs:
       - name: Show this runner's public IP
         run: curl -s https://ifconfig.me ; echo ""
 
+      - name: Raw reachability probes (curl, 20s timeout each)
+        run: |
+          echo "--- runner geo ---"
+          curl -s https://ipinfo.io/json || true
+          echo ""
+          echo "--- app login subdomain ---"
+          curl -s -o /dev/null -w "app.drntrvaidyaseva: HTTP %{http_code} in %{time_total}s\n" --max-time 20 https://app.drntrvaidyaseva.ap.gov.in/ASRI/ || echo "app.drntrvaidyaseva: FAILED/TIMEOUT"
+          echo "--- public portal ---"
+          curl -s -o /dev/null -w "drntrvaidyaseva: HTTP %{http_code} in %{time_total}s\n" --max-time 20 https://drntrvaidyaseva.ap.gov.in/web/guest/signin || echo "drntrvaidyaseva: FAILED/TIMEOUT"
+
       - name: Install Playwright + Chromium
         run: |
           npm init -y
