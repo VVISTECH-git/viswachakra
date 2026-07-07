@@ -81,6 +81,17 @@
   .step .r{font-size:12.5px;color:var(--text-2);margin-top:5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;line-height:1.6}
   .r ol{margin:2px 0 2px 18px}.r .yes{color:var(--green-fg);font-weight:600}.r .no{color:var(--red-fg);font-weight:600}.r p{white-space:pre-wrap}
   .x{margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-3)}
+  .tlhead{display:flex;align-items:center;margin:0 0 14px}
+  .vtog{display:inline-flex;border:1px solid var(--border-strong);border-radius:8px;overflow:hidden;margin-left:auto}
+  .vtog button{border:none;background:var(--card);color:var(--text-2);font-size:11.5px;font-weight:600;padding:5px 12px;cursor:pointer;font-family:inherit}
+  .vtog button.on{background:var(--primary);color:#fff}
+  .wtab{width:100%;border-collapse:collapse;font-size:12.5px}
+  .wtab th{text-align:left;padding:8px 10px;background:var(--bg);color:var(--text-2);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;border:1px solid var(--border);white-space:nowrap}
+  .wtab td{padding:8px 10px;border:1px solid var(--border);vertical-align:top;line-height:1.5}
+  .wtab td.dt{white-space:nowrap;color:var(--text-2)}
+  .wtab td.rm{min-width:250px}.wtab td.rm p{white-space:pre-wrap;margin:0}.wtab td.rm ol{margin:0 0 0 16px;padding:0}
+  .wtab td.amt{text-align:right;white-space:nowrap}
+  .wtab .yes{color:var(--green-fg);font-weight:600}.wtab .no{color:var(--red-fg);font-weight:600}
 </style>
 </head>
 <body>
@@ -148,6 +159,8 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 const cfg=window.VC_CONFIG||{};
 const sb=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY);
 let page=1;
+let wfView=localStorage.getItem('vc-wfview')||'table';
+let curCase=null;
 
 function badge(s){if(/hold|stopped|pending/i.test(s||''))return'badge hold';if(/paid|approved|credited/i.test(s||''))return'badge paid';if(/reject|cancel|terminat/i.test(s||''))return'badge rej';return'badge';}
 
@@ -221,11 +234,20 @@ async function showDetail(caseNo){
   const info=[['Claim no',c.claim_no],['Card no',c.card_no],['District',c.district],['Mandal',c.mandal],['Village',c.village],['Contact',c.contact_no],['IP no',c.ip_no],['IP registration',c.ip_registration_dt],['Category',c.category],['Procedure',c.procedure_name]];
   let h='<div class="info">'+info.map(([k,v])=>`<div><div class="k">${k}</div><div class="val">${esc(v)||'–'}</div></div>`).join('')+'</div>';
   h+=`<div style="margin-bottom:20px"><span class="${badge(c.claim_status)}" style="max-width:none">${esc(c.claim_status||c.case_status||'–')}</span></div>`;
-  h+='<h3 class="st">Claim approval timeline</h3>';
+  h+=`<div class="tlhead"><h3 class="st" style="margin:0">Claim approval timeline</h3>
+    <div class="vtog"><button id="vt-tl" class="${wfView==='timeline'?'on':''}">Timeline</button><button id="vt-tb" class="${wfView==='table'?'on':''}">Table</button></div></div>`;
   if(!rows||!rows.length){h+=`<div class="empty" style="padding:20px">${esc(c.workflow_note||'No claim workflow captured yet.')}</div>`;}
+  else if(wfView==='table'){
+    h+=`<table class="wtab"><thead><tr><th>Date &amp; Time</th><th>Role &amp; Name</th><th>Remarks</th><th>Action</th><th style="text-align:right">Amount</th></tr></thead><tbody>`;
+    rows.forEach(r=>{h+=`<tr><td class="dt">${esc(r.date_time)}</td><td>${esc(r.role_name)}</td><td class="rm">${fmtRemarks(r.remarks||'')}</td><td>${esc(r.action)}</td><td class="amt">₹${esc(r.amount)}</td></tr>`;});
+    h+='</tbody></table>';
+  }
   else{h+='<div class="tl">';rows.forEach(r=>{const cl=/hold|stopped|reject/i.test(r.action||'')?' hold':/paid|approv/i.test(r.action||'')?' paid':'';
     h+=`<div class="step${cl}"><div class="h">${esc(r.action)} · ${esc(r.role_name)} <span class="w">· ${esc(r.date_time)} · ₹${esc(r.amount)}</span></div><div class="r">${fmtRemarks(r.remarks||'')}</div></div>`;});h+='</div>';}
   $('p-body').innerHTML=h;$('overlay').style.display='block';$('panel').classList.add('open');
+  const setV=v=>{wfView=v;localStorage.setItem('vc-wfview',v);showDetail(caseNo);};
+  if($('vt-tl'))$('vt-tl').onclick=()=>setV('timeline');
+  if($('vt-tb'))$('vt-tb').onclick=()=>setV('table');
 }
 function closePanel(){$('overlay').style.display='none';$('panel').classList.remove('open');}
 $('overlay').onclick=closePanel;
