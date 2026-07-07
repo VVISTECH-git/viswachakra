@@ -60,6 +60,10 @@
   .chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
   .chart-card.wide{grid-column:1 / -1}
   .ctitle{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:14px}
+  .dtabs{display:flex;gap:4px;margin:2px 0 16px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .dtabs button{border:none;background:none;color:var(--text-2);font-size:13px;font-weight:600;padding:9px 15px;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .dtabs button:hover{color:var(--text)}
+  .dtabs button.on{color:var(--primary);border-bottom-color:var(--primary)}
   .cwrap{position:relative;height:260px}
   @media(max-width:820px){.kpi-row{grid-template-columns:1fr 1fr}.chart-grid{grid-template-columns:1fr}}
   .toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
@@ -155,18 +159,48 @@
         <div class="mcard"><div class="ml">Paid claims</div><div class="mv" id="m-paidn">–</div><div class="mh">settled to date</div></div>
       </div>
 
-      <div class="chart-grid">
-        <div class="chart-card wide"><h3 class="ctitle">Money flow by month — claimed vs received</h3><div class="cwrap"><canvas id="c-money"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Average settlement time (days) by month</h3><div class="cwrap"><canvas id="c-tat"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Money stuck by age of claim</h3><div class="cwrap"><canvas id="c-aging"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Where claims are right now</h3><div class="cwrap"><canvas id="c-status"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Deduction rate by month (%)</h3><div class="cwrap"><canvas id="c-ded"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Where the claimed money went</h3><div class="cwrap"><canvas id="c-outcome"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Claims submitted per month</h3><div class="cwrap"><canvas id="c-volume"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">How long claims take to settle</h3><div class="cwrap"><canvas id="c-tatdist"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Rupees deducted per month</h3><div class="cwrap"><canvas id="c-dedamt"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Top procedures by volume</h3><div class="cwrap"><canvas id="c-proc"></canvas></div></div>
-        <div class="chart-card"><h3 class="ctitle">Why claims are stuck (unpaid)</h3><div class="cwrap"><canvas id="c-stuck"></canvas></div></div>
+      <div class="dtabs">
+        <button data-dt="overview" class="on">Overview</button>
+        <button data-dt="settle">Settlement</button>
+        <button data-dt="deduct">Deductions</button>
+        <button data-dt="pending">Pending</button>
+        <button data-dt="volume">Volume &amp; procedures</button>
+      </div>
+
+      <div class="dtab" id="dt-overview">
+        <div class="chart-grid">
+          <div class="chart-card wide"><h3 class="ctitle">Money flow by month — claimed vs received</h3><div class="cwrap"><canvas id="c-money"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Where the claimed money went</h3><div class="cwrap"><canvas id="c-outcome"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Where claims are right now</h3><div class="cwrap"><canvas id="c-status"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="dtab" id="dt-settle" style="display:none">
+        <div class="chart-grid">
+          <div class="chart-card"><h3 class="ctitle">Average settlement time (days) by month</h3><div class="cwrap"><canvas id="c-tat"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">How long claims take to settle</h3><div class="cwrap"><canvas id="c-tatdist"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="dtab" id="dt-deduct" style="display:none">
+        <div class="chart-grid">
+          <div class="chart-card"><h3 class="ctitle">Deduction rate by month (%)</h3><div class="cwrap"><canvas id="c-ded"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Rupees deducted per month</h3><div class="cwrap"><canvas id="c-dedamt"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="dtab" id="dt-pending" style="display:none">
+        <div class="chart-grid">
+          <div class="chart-card"><h3 class="ctitle">Money stuck by age of claim</h3><div class="cwrap"><canvas id="c-aging"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Why claims are stuck (unpaid)</h3><div class="cwrap"><canvas id="c-stuck"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="dtab" id="dt-volume" style="display:none">
+        <div class="chart-grid">
+          <div class="chart-card"><h3 class="ctitle">Claims submitted per month</h3><div class="cwrap"><canvas id="c-volume"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Top procedures by volume</h3><div class="cwrap"><canvas id="c-proc"></canvas></div></div>
+        </div>
       </div>
     </div>
   </main>
@@ -242,13 +276,24 @@ function switchView(v){
   $('nav-cases').classList.toggle('on',v==='cases');
   $('view-dash').style.display=v==='dash'?'block':'none';
   $('view-cases').style.display=v==='cases'?'block':'none';
+  if(v==='dash')resizeCharts();
+}
+function resizeCharts(){setTimeout(()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});},40);}
+function setupDashTabs(){
+  document.querySelectorAll('.dtabs button').forEach(b=>{
+    b.onclick=()=>{
+      document.querySelectorAll('.dtabs button').forEach(x=>x.classList.toggle('on',x===b));
+      document.querySelectorAll('.dtab').forEach(d=>d.style.display=(d.id==='dt-'+b.dataset.dt)?'block':'none');
+      resizeCharts(); // charts in a just-shown tab need to resize to their now-visible container
+    };
+  });
 }
 
 // ---- data ----
 let started=false;
 async function init(){
   if(started)return;started=true;
-  setupNav();
+  setupNav();setupDashTabs();
   loadDashboard();                       // default landing view
   loadStatuses();loadStats();loadCases(); // Cases tab, loads in background
 }
