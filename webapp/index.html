@@ -59,7 +59,8 @@
   .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px}
   .chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
   .chart-card.wide{grid-column:1 / -1}
-  .ctitle{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:14px}
+  .ctitle{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+  .cdesc{font-size:11.5px;color:var(--text-3);margin:0 0 12px;line-height:1.5}
   .dtabs{display:flex;gap:4px;margin:2px 0 16px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
   .dtabs button{border:none;background:none;color:var(--text-2);font-size:13px;font-weight:600;padding:9px 15px;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-1px}
   .dtabs button:hover{color:var(--text)}
@@ -169,39 +170,39 @@
 
       <div class="dtab" id="dt-overview">
         <div class="chart-grid">
-          <div class="chart-card wide"><h3 class="ctitle">Cash flow by month — claims raised vs payments received</h3><p style="font-size:11px;color:var(--text-3);margin:-10px 0 12px">These are different claims: "raised" = claims you submitted that month; "received" = money that arrived that month (usually older claims, often paid in bulk batches).</p><div class="cwrap"><canvas id="c-money"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">Where the claimed money went</h3><div class="cwrap"><canvas id="c-outcome"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">Where claims are right now</h3><div class="cwrap"><canvas id="c-status"></canvas></div></div>
+          <div class="chart-card wide"><h3 class="ctitle">Cash flow by month — claims raised vs payments received</h3><p class="cdesc">The rhythm of your cash: purple is what you billed each month, green is money that actually landed. They rarely line up — because the insurer pays old claims in sudden bulk batches, not steadily. Big green with small purple = a backlog being cleared.</p><div class="cwrap"><canvas id="c-money"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Where the claimed money went</h3><p class="cdesc">Of every rupee you billed, how much actually came back (green), how much the insurer cut as deductions (red), and how much is still stuck with them, unpaid (amber). The whole circle is what you were owed.</p><div class="cwrap"><canvas id="c-outcome"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Where claims are right now</h3><p class="cdesc">A live snapshot of every claim's current stage — paid, on hold, under review, sent back, or stuck. The longest bars show where most of your claims are sitting today.</p><div class="cwrap"><canvas id="c-status"></canvas></div></div>
         </div>
       </div>
 
       <div class="dtab" id="dt-settle" style="display:none">
         <div class="chart-grid">
-          <div class="chart-card wide"><h3 class="ctitle">Avg days to get paid — by the month the claim was raised</h3><p style="font-size:11px;color:var(--text-3);margin:-10px 0 12px">The real lag: raise a claim this month, and on average it's paid this many days later. Recent months read low only because just the fast claims are paid so far.</p><div class="cwrap"><canvas id="c-lag"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">Paid vs still-pending — by month raised</h3><div class="cwrap"><canvas id="c-cohort"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">How long settled claims took (distribution)</h3><div class="cwrap"><canvas id="c-tatdist"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">Avg settlement time by month paid</h3><div class="cwrap"><canvas id="c-tat"></canvas></div></div>
+          <div class="chart-card wide"><h3 class="ctitle">Avg days to get paid — by the month the claim was raised</h3><p class="cdesc">The real waiting time. Each bar is a month you submitted claims; its height is how many days those claims took to get paid, on average. The older months tell the truth — well over a year. Recent months look shorter only because just the quick ones are paid so far; the rest are still waiting.</p><div class="cwrap"><canvas id="c-lag"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Paid vs still-pending — by month raised</h3><p class="cdesc">For each month you submitted claims, how many have actually been paid (green) versus how many are still waiting (amber). Tall amber columns in recent months = a whole month of your claims the insurer hasn't touched.</p><div class="cwrap"><canvas id="c-cohort"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">How long settled claims took (distribution)</h3><p class="cdesc">Of the claims that HAVE been paid, how long each one took — sorted into time bands. Bars stacking up on the right (91–180, 180+ days) mean most claims dragged past three to six months before payment.</p><div class="cwrap"><canvas id="c-tatdist"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Avg settlement time by month paid</h3><p class="cdesc">The same delay seen from the payment side: for claims paid in each month, how many days they'd been waiting on average before the money finally came.</p><div class="cwrap"><canvas id="c-tat"></canvas></div></div>
         </div>
       </div>
 
       <div class="dtab" id="dt-deduct" style="display:none">
         <div class="chart-grid">
-          <div class="chart-card"><h3 class="ctitle">Deduction rate by month (%)</h3><div class="cwrap"><canvas id="c-ded"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">Rupees deducted per month</h3><div class="cwrap"><canvas id="c-dedamt"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Deduction rate by month (%)</h3><p class="cdesc">For every ₹100 you claimed, how much the insurer knocked off before paying — as a percentage, month by month. A rising line means they're cutting more of your bills over time.</p><div class="cwrap"><canvas id="c-ded"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Rupees deducted per month</h3><p class="cdesc">Not a percentage — the actual money. This is how many rupees simply vanished to deductions each month: amounts you earned, billed, and never received.</p><div class="cwrap"><canvas id="c-dedamt"></canvas></div></div>
         </div>
       </div>
 
       <div class="dtab" id="dt-pending" style="display:none">
         <div class="chart-grid">
-          <div class="chart-card"><h3 class="ctitle">Money stuck by age of claim</h3><div class="cwrap"><canvas id="c-aging"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">Why claims are stuck (unpaid)</h3><div class="cwrap"><canvas id="c-stuck"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Money stuck by age of claim</h3><p class="cdesc">Of the money still unpaid, how long it's been waiting. The red bar (90+ days) is your money frozen for over three months — the older it gets, the harder it is to recover.</p><div class="cwrap"><canvas id="c-aging"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Why claims are stuck (unpaid)</h3><p class="cdesc">The reasons your unpaid claims are held up — patient feedback pending, queries raised, sent back, and so on. This is your action list: the top bars are what to chase first to unlock payment.</p><div class="cwrap"><canvas id="c-stuck"></canvas></div></div>
         </div>
       </div>
 
       <div class="dtab" id="dt-volume" style="display:none">
         <div class="chart-grid">
-          <div class="chart-card"><h3 class="ctitle">Claims submitted per month</h3><div class="cwrap"><canvas id="c-volume"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">Top procedures by volume</h3><div class="cwrap"><canvas id="c-proc"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Claims submitted per month</h3><p class="cdesc">Your workload over time — how many claims (surgeries and treatments) you submitted each month. This is the volume of business flowing through the hospital.</p><div class="cwrap"><canvas id="c-volume"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Top procedures by volume</h3><p class="cdesc">Which surgeries and treatments make up most of your claims — where your clinical work is concentrated, and which procedures matter most to your revenue.</p><div class="cwrap"><canvas id="c-proc"></canvas></div></div>
         </div>
       </div>
     </div>
