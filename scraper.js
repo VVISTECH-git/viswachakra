@@ -449,16 +449,12 @@ async function rescrapeCases(caseNos, opts = {}) {
   context.on('page', (p) => attachDialogHandler(p, log));
 
   try {
-    let page = await login(context, log);
+    // ONE login for the whole run - the portal rate-limits repeated logins ("Invalid User Id").
+    // A short delay between cases keeps request-rate low enough to avoid session throttling.
+    const page = await login(context, log);
     for (let i = 0; i < caseNos.length; i++) {
       const caseNo = caseNos[i];
-      // refresh the session every 40 cases - the portal throttles long single sessions
-      if (i > 0 && i % 40 === 0) {
-        log('  (refreshing login to avoid session throttling)');
-        for (const p of context.pages()) { if (p !== page) await p.close().catch(() => {}); }
-        await page.close().catch(() => {});
-        page = await login(context, log);
-      }
+      if (i > 0) await page.waitForTimeout(2500); // be gentle on the legacy portal
       log(`[${i + 1}/${caseNos.length}] ${caseNo}...`);
       try {
         await searchCaseByNo(page, caseNo, log);
