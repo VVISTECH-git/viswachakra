@@ -59,6 +59,10 @@ alter table cases          enable row level security;
 alter table claim_workflow enable row level security;
 alter table sync_runs      enable row level security;
 
+drop policy if exists "authenticated read cases"    on cases;
+drop policy if exists "authenticated read workflow" on claim_workflow;
+drop policy if exists "authenticated read runs"     on sync_runs;
+
 create policy "authenticated read cases"    on cases          for select to authenticated using (true);
 create policy "authenticated read workflow" on claim_workflow for select to authenticated using (true);
 create policy "authenticated read runs"     on sync_runs      for select to authenticated using (true);

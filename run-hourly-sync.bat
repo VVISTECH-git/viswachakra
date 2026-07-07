@@ -5,4 +5,6 @@ REM Registered with Windows Task Scheduler to run every hour.
 
 cd /d "C:\Users\bhanu\Downloads\viswachakra"
 set HEADLESS=true
+echo ===== sync started %date% %time% ===== >> "logs\hourly-sync.log"
 node scraper.js --hours 2 --headless >> "logs\hourly-sync.log" 2>&1
+node push-to-supabase.js >> "logs\hourly-sync.log" 2>&1
