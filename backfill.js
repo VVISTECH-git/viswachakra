@@ -32,7 +32,11 @@ function fmt(d) {
     cur = next;
   }
 
-  console.log(`Backfill: ${chunks.length} chunks of up to ${chunkDays} days`);
+  // default: process newest chunks first, so the most recent (most useful) data lands first
+  const oldestFirst = process.argv.includes('--oldest-first');
+  if (!oldestFirst) chunks.reverse();
+
+  console.log(`Backfill: ${chunks.length} chunks of up to ${chunkDays} days (${oldestFirst ? 'oldest first' : 'newest first'})`);
   let grandFound = 0, grandDeep = 0;
   for (let i = 0; i < chunks.length; i++) {
     const [from, to] = chunks[i];
