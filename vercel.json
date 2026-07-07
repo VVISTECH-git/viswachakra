@@ -1,6 +1,6 @@
 {
   "installCommand": "echo no-install-needed",
   "buildCommand": "echo static-site-no-build",
-  "outputDirectory": "webapp",
+  "outputDirectory": ".",
   "framework": null
 }
