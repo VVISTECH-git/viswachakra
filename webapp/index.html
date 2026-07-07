@@ -177,8 +177,10 @@
 
       <div class="dtab" id="dt-settle" style="display:none">
         <div class="chart-grid">
-          <div class="chart-card"><h3 class="ctitle">Average settlement time (days) by month</h3><div class="cwrap"><canvas id="c-tat"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">How long claims take to settle</h3><div class="cwrap"><canvas id="c-tatdist"></canvas></div></div>
+          <div class="chart-card wide"><h3 class="ctitle">Avg days to get paid — by the month the claim was raised</h3><p style="font-size:11px;color:var(--text-3);margin:-10px 0 12px">The real lag: raise a claim this month, and on average it's paid this many days later. Recent months read low only because just the fast claims are paid so far.</p><div class="cwrap"><canvas id="c-lag"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Paid vs still-pending — by month raised</h3><div class="cwrap"><canvas id="c-cohort"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">How long settled claims took (distribution)</h3><div class="cwrap"><canvas id="c-tatdist"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Avg settlement time by month paid</h3><div class="cwrap"><canvas id="c-tat"></canvas></div></div>
         </div>
       </div>
 
@@ -333,6 +335,7 @@ async function loadDashboard(){
   let totClaimed=0,totPaid=0,totDed=0,pendVal=0,paidCount=0,tatSum=0,tatN=0,tatMax=0,oldVal=0,oldN=0;
   const monMoney={},monTat={},monDed={},aging={'0–30 days':0,'31–60':0,'61–90':0,'90+ days':0},statusCount={};
   const monCount={},procCount={},tatDist={'0–30':0,'31–60':0,'61–90':0,'91–180':0,'180+':0},pendStatus={};
+  const cohRaised={},cohPaid={},cohPend={},cohLag={}; // by SUBMISSION month
 
   cases.forEach(c=>{
     const rows=(byCase[c.case_no]||[]).sort((a,b)=>a.row_index-b.row_index);
@@ -340,12 +343,13 @@ async function loadDashboard(){
     const paidRow=[...rows].reverse().find(r=>/paid/i.test(r.action||''));
     const claimed=initiated?parseAmt(initiated.amount):0;
     const initAt=initiated?parseWfDate(initiated.date_time):null;
-    if(initAt)monCount[monKey(initAt)]=(monCount[monKey(initAt)]||0)+1;
+    if(initAt){monCount[monKey(initAt)]=(monCount[monKey(initAt)]||0)+1;cohRaised[monKey(initAt)]=(cohRaised[monKey(initAt)]||0)+1;}
     if(c.procedure_name){const p=String(c.procedure_name).replace(/\s*\(.*$/,'').trim()||'(unspecified)';procCount[p]=(procCount[p]||0)+1;}
     if(claimed>0){totClaimed+=claimed;if(initAt){const k=monKey(initAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).c+=claimed;}}
     if(paidRow){
       const paid=parseAmt(paidRow.amount),paidAt=parseWfDate(paidRow.date_time);
       totPaid+=paid;paidCount++;const ded=Math.max(0,claimed-paid);totDed+=ded;
+      if(initAt){const sk=monKey(initAt);cohPaid[sk]=(cohPaid[sk]||0)+1;if(paidAt)cohLag[sk]=(cohLag[sk]||0)+Math.max(0,Math.round((paidAt-initAt)/864e5));}
       if(paidAt){const k=monKey(paidAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).p+=paid;const md=(monDed[k]=monDed[k]||{d:0,b:0});md.d+=ded;md.b+=claimed;}
       if(initAt&&paidAt){const days=Math.round((paidAt-initAt)/864e5);if(days>=0){tatSum+=days;tatN++;if(days>tatMax)tatMax=days;const k=monKey(paidAt);const mt=(monTat[k]=monTat[k]||{s:0,n:0});mt.s+=days;mt.n++;
         if(days<=30)tatDist['0–30']++;else if(days<=60)tatDist['31–60']++;else if(days<=90)tatDist['61–90']++;else if(days<=180)tatDist['91–180']++;else tatDist['180+']++;}}
@@ -354,6 +358,7 @@ async function loadDashboard(){
       if(age<=30)aging['0–30 days']+=claimed;else if(age<=60)aging['31–60']+=claimed;else if(age<=90)aging['61–90']+=claimed;else aging['90+ days']+=claimed;
       if(age>90){oldVal+=claimed;oldN++;}
       if(c.claim_status)pendStatus[c.claim_status]=(pendStatus[c.claim_status]||0)+1;
+      if(initAt){const sk=monKey(initAt);cohPend[sk]=(cohPend[sk]||0)+1;}
     }
     if(c.claim_status)statusCount[c.claim_status]=(statusCount[c.claim_status]||0)+1;
   });
@@ -436,6 +441,21 @@ async function loadDashboard(){
     type:'bar',
     data:{labels:topStuck.map(s=>s[0].length>32?s[0].slice(0,32)+'…':s[0]),datasets:[{label:'Unpaid claims',data:topStuck.map(s=>s[1]),backgroundColor:'#f59e0b'}]},
     options:baseOpts({indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10}}}}})
+  });
+
+  const cohMonths=Object.keys(cohRaised).sort();
+  const lagMonths=cohMonths.filter(k=>cohPaid[k]);
+  makeChart('c-lag',{
+    type:'bar',
+    data:{labels:lagMonths.map(monLabel),datasets:[{label:'Avg days to get paid',data:lagMonths.map(k=>Math.round(cohLag[k]/cohPaid[k])),backgroundColor:'#0ea5e9'}]},
+    options:baseOpts({plugins:{legend:{display:false}}})
+  });
+  makeChart('c-cohort',{
+    type:'bar',
+    data:{labels:cohMonths.map(monLabel),datasets:[
+      {label:'Paid',data:cohMonths.map(k=>cohPaid[k]||0),backgroundColor:'#10b981'},
+      {label:'Still pending',data:cohMonths.map(k=>cohPend[k]||0),backgroundColor:'#f59e0b'}]},
+    options:baseOpts({scales:{x:{stacked:true,grid:{color:gridClr},ticks:{font:{size:10}}},y:{stacked:true,grid:{color:gridClr},ticks:{font:{size:10}}}}})
   });
 
   $('dash-loading').style.display='none';$('dash-content').style.display='block';
