@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viswachakra Claims</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#4f46e5;--primary-dark:#4338ca;--primary-light:#eef2ff;
+    --bg:#f6f7fb;--card:#fff;--border:#e5e7ef;--border-strong:#cdd2e0;
+    --text:#101322;--text-2:#4b5265;--text-3:#99a0b5;
+    --amber-bg:#fef3c7;--amber-fg:#92400e;--green-bg:#d7f5e3;--green-fg:#065f46;--red-bg:#fee2e2;--red-fg:#991b1b;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+
+  /* login */
+  #login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .login-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px;width:380px;max-width:100%;box-shadow:0 4px 24px rgba(16,19,34,.06)}
+  .brand{display:flex;align-items:center;gap:11px;margin-bottom:22px}
+  .brand .mark{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .brand h1{font-size:16px;font-weight:700}.brand p{font-size:12px;color:var(--text-3)}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--text-2);margin:14px 0 6px}
+  input{width:100%;padding:10px 13px;border:1px solid var(--border-strong);border-radius:9px;font-size:14px;font-family:inherit}
+  input:focus{outline:2px solid var(--primary-light);border-color:var(--primary)}
+  .btn{border:1px solid var(--primary);background:var(--primary);color:#fff;padding:10px 16px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;width:100%;margin-top:18px}
+  .btn:hover{background:var(--primary-dark)}
+  .btn.sm{width:auto;padding:8px 14px;font-size:13px}
+  .btn.ghost{background:var(--card);color:var(--text);border-color:var(--border-strong)}
+  .btn.ghost:hover{background:var(--bg)}
+  .err{color:var(--red-fg);font-size:12.5px;margin-top:12px;min-height:16px}
+
+  /* app */
+  #app{display:none}
+  header{background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;height:60px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+  .logo{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700}
+  .logo .mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+  .logo small{display:block;font-size:11px;font-weight:500;color:var(--text-3)}
+  .hright{margin-left:auto;display:flex;align-items:center;gap:9px}
+  .pill{font-size:12px;color:var(--text-2);background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:5px 12px}
+  main{max-width:1280px;margin:0 auto;padding:22px 24px 60px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:18px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+  .kpi .l{font-size:11.5px;color:var(--text-2);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .kpi .v{font-size:26px;font-weight:700;margin-top:5px}
+  .kpi .v.amber{color:var(--amber-fg)}.kpi .v.green{color:var(--green-fg)}
+  .toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  select,#q{padding:9px 13px;border:1px solid var(--border-strong);border-radius:9px;font-size:13.5px;background:var(--card);color:var(--text);font-family:inherit}
+  #q{flex:1;min-width:240px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;padding:11px 14px;background:var(--bg);color:var(--text-2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr.row{cursor:pointer}tr.row:hover{background:var(--primary-light)}
+  .link{color:var(--primary);font-weight:600}
+  .badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px;background:var(--primary-light);color:var(--primary-dark);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge.hold{background:var(--amber-bg);color:var(--amber-fg)}.badge.paid{background:var(--green-bg);color:var(--green-fg)}.badge.rej{background:var(--red-bg);color:var(--red-fg)}
+  .pager{display:flex;align-items:center;gap:12px;padding:12px 14px;font-size:12.5px;color:var(--text-2);border-top:1px solid var(--border)}
+  .pager .grow{flex:1}
+  .empty{text-align:center;color:var(--text-3);padding:40px}
+  #overlay{position:fixed;inset:0;background:rgba(10,12,24,.45);z-index:40;display:none}
+  #panel{position:fixed;top:0;right:-760px;width:720px;max-width:96vw;height:100vh;background:var(--card);z-index:50;box-shadow:-16px 0 50px rgba(10,12,24,.25);transition:right .25s;display:flex;flex-direction:column}
+  #panel.open{right:0}
+  .ph{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px}
+  .ph h2{font-size:16px}.ph .sub{font-size:12.5px;color:var(--text-2);margin-top:4px}
+  .pb{padding:20px 24px;overflow-y:auto;flex:1}
+  .info{display:grid;grid-template-columns:1fr 1fr;gap:11px 22px;margin-bottom:20px}
+  .info .k{font-size:10.5px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .info .val{font-size:13px;margin-top:2px;font-weight:500;word-break:break-word}
+  .st{font-size:11.5px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.05em;margin:0 0 14px}
+  .tl{position:relative;padding-left:22px}
+  .tl::before{content:'';position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--border)}
+  .step{position:relative;margin-bottom:18px}
+  .step::before{content:'';position:absolute;left:-21px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--card);border:3px solid var(--primary)}
+  .step.hold::before{border-color:#f59e0b}.step.paid::before{border-color:#10b981}
+  .step .h{font-size:13px;font-weight:600}.step .w{font-size:12px;color:var(--text-3);font-weight:400}
+  .step .r{font-size:12.5px;color:var(--text-2);margin-top:5px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;line-height:1.6}
+  .r ol{margin:2px 0 2px 18px}.r .yes{color:var(--green-fg);font-weight:600}.r .no{color:var(--red-fg);font-weight:600}.r p{white-space:pre-wrap}
+  .x{margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-3)}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="login-card">
+    <div class="brand"><div class="mark">VC</div><div><h1>Viswachakra Claims</h1><p>Dr NTR Vaidya Seva · VCOH-MTM</p></div></div>
+    <form id="login-form">
+      <label for="email">Email</label>
+      <input type="email" id="email" autocomplete="username" required>
+      <label for="pw">Password</label>
+      <input type="password" id="pw" autocomplete="current-password" required>
+      <button class="btn" type="submit" id="login-btn">Sign in</button>
+      <div class="err" id="login-err"></div>
+    </form>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="logo"><div class="mark">VC</div><div>Viswachakra Claims<small>Dr NTR Vaidya Seva · VCOH-MTM</small></div></div>
+    <div class="hright">
+      <span class="pill" id="sync-pill">–</span>
+      <button class="btn sm ghost" id="export-btn">⬇ Excel</button>
+      <button class="btn sm ghost" id="logout-btn">Sign out</button>
+    </div>
+  </header>
+  <main>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Total cases</div><div class="v" id="k-total">–</div></div>
+      <div class="kpi"><div class="l">With timeline</div><div class="v" id="k-wf">–</div></div>
+      <div class="kpi"><div class="l">Hold / stopped</div><div class="v amber" id="k-hold">–</div></div>
+      <div class="kpi"><div class="l">Paid / credited</div><div class="v green" id="k-paid">–</div></div>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="q" placeholder="Search case no, claim no, patient, card no, phone...">
+      <select id="status"><option value="">All statuses</option></select>
+      <select id="pageSize"><option>25</option><option>50</option><option>100</option></select>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Case no</th><th>Claim no</th><th>Patient</th><th>Claim status</th><th>Status date</th><th>Timeline</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+      </table>
+      <div class="pager">
+        <span id="pg-info">–</span><span class="grow"></span>
+        <button class="btn sm ghost" id="prev">‹ Prev</button><span id="pg-cur">1</span><button class="btn sm ghost" id="next">Next ›</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="overlay"></div>
+<div id="panel">
+  <div class="ph"><div style="flex:1"><h2 id="p-title">–</h2><div class="sub" id="p-sub">–</div></div><button class="x" onclick="closePanel()">✕</button></div>
+  <div class="pb" id="p-body"></div>
+</div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const cfg=window.VC_CONFIG||{};
+const sb=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY);
+let page=1;
+
+function badge(s){if(/hold|stopped|pending/i.test(s||''))return'badge hold';if(/paid|approved|credited/i.test(s||''))return'badge paid';if(/reject|cancel|terminat/i.test(s||''))return'badge rej';return'badge';}
+
+// ---- auth ----
+async function checkSession(){
+  const {data}=await sb.auth.getSession();
+  if(data.session){showApp();}else{$('login').style.display='flex';$('app').style.display='none';}
+}
+$('login-form').addEventListener('submit',async e=>{
+  e.preventDefault();$('login-err').textContent='';$('login-btn').textContent='Signing in…';
+  const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('pw').value});
+  $('login-btn').textContent='Sign in';
+  if(error){$('login-err').textContent=error.message;return;}
+  showApp();
+});
+$('logout-btn').addEventListener('click',async()=>{await sb.auth.signOut();location.reload();});
+function showApp(){$('login').style.display='none';$('app').style.display='block';init();}
+
+// ---- data ----
+let started=false;
+async function init(){if(started)return;started=true;await loadStatuses();await loadStats();await loadCases();}
+
+async function loadStats(){
+  const total=(await sb.from('cases').select('*',{count:'exact',head:true})).count||0;
+  const wf=(await sb.from('claim_workflow').select('case_no',{count:'exact',head:true})).count||0;
+  const hold=(await sb.from('cases').select('*',{count:'exact',head:true}).or('claim_status.ilike.%Hold%,claim_status.ilike.%Stopped%')).count||0;
+  const paid=(await sb.from('cases').select('*',{count:'exact',head:true}).or('claim_status.ilike.%Paid%,claim_status.ilike.%Credited%')).count||0;
+  $('k-total').textContent=total.toLocaleString();$('k-wf').textContent=wf.toLocaleString();
+  $('k-hold').textContent=hold.toLocaleString();$('k-paid').textContent=paid.toLocaleString();
+  const {data}=await sb.from('cases').select('last_synced').order('last_synced',{ascending:false}).limit(1);
+  $('sync-pill').textContent=data&&data[0]?'Last sync '+new Date(data[0].last_synced).toLocaleString():'–';
+}
+async function loadStatuses(){
+  const {data}=await sb.from('cases').select('claim_status');
+  const counts={};(data||[]).forEach(r=>{if(r.claim_status)counts[r.claim_status]=(counts[r.claim_status]||0)+1;});
+  const sel=$('status');const cur=sel.value;
+  Object.entries(counts).sort((a,b)=>b[1]-a[1]).forEach(([s,n])=>{const o=document.createElement('option');o.value=s;o.textContent=`${s} (${n})`;sel.appendChild(o);});
+  sel.value=cur;
+}
+async function loadCases(){
+  const ps=parseInt($('pageSize').value,10);const from=(page-1)*ps;
+  let query=sb.from('cases').select('*',{count:'exact'});
+  const q=$('q').value.trim();
+  if(q)query=query.or(`case_no.ilike.%${q}%,claim_no.ilike.%${q}%,patient_name.ilike.%${q}%,card_no.ilike.%${q}%,contact_no.ilike.%${q}%`);
+  if($('status').value)query=query.eq('claim_status',$('status').value);
+  query=query.order('last_synced',{ascending:false}).range(from,from+ps-1);
+  const {data,count}=await query;
+  const tb=$('rows');tb.innerHTML='';
+  if(!data||!data.length){tb.innerHTML='<tr><td colspan="6" class="empty">No cases found</td></tr>';}
+  (data||[]).forEach(c=>{
+    const tr=document.createElement('tr');tr.className='row';
+    tr.innerHTML=`<td class="link">${esc(c.case_no)}</td><td>${esc(c.claim_no)||'–'}</td><td>${esc(c.patient_name)}</td>
+      <td><span class="${badge(c.claim_status)}" title="${esc(c.claim_status)}">${esc(c.claim_status)}</span></td>
+      <td style="white-space:nowrap">${esc(c.status_date)}</td><td>${esc(c.ip_no)||'–'}</td>`;
+    tr.onclick=()=>showDetail(c.case_no);tb.appendChild(tr);
+  });
+  const to=Math.min(count||0,page*ps);
+  $('pg-info').textContent=count?`Showing ${from+1}–${to} of ${count.toLocaleString()}`:'No cases';
+  $('pg-cur').textContent=page;$('prev').disabled=page<=1;$('next').disabled=to>=(count||0);
+}
+function fmtRemarks(t){
+  if(/\(\d+\)\s*:/.test(t)){const parts=t.split(/\(\d+\)\s*:\s*/).map(p=>p.trim()).filter(Boolean);
+    return'<ol>'+parts.map(p=>'<li>'+esc(p).replace(/\?\s*YES\b/g,'? <span class="yes">YES</span>').replace(/\?\s*NO\b/g,'? <span class="no">NO</span>')+'</li>').join('')+'</ol>';}
+  return'<p>'+esc(t)+'</p>';
+}
+async function showDetail(caseNo){
+  const {data:cr}=await sb.from('cases').select('*').eq('case_no',caseNo).single();
+  const {data:rows}=await sb.from('claim_workflow').select('*').eq('case_no',caseNo).order('row_index');
+  const c=cr||{};
+  $('p-title').textContent=c.case_no||caseNo;$('p-sub').textContent=(c.patient_name||'')+(c.nwh_name?' · '+c.nwh_name:'');
+  const info=[['Claim no',c.claim_no],['Card no',c.card_no],['District',c.district],['Mandal',c.mandal],['Village',c.village],['Contact',c.contact_no],['IP no',c.ip_no],['IP registration',c.ip_registration_dt],['Category',c.category],['Procedure',c.procedure_name]];
+  let h='<div class="info">'+info.map(([k,v])=>`<div><div class="k">${k}</div><div class="val">${esc(v)||'–'}</div></div>`).join('')+'</div>';
+  h+=`<div style="margin-bottom:20px"><span class="${badge(c.claim_status)}" style="max-width:none">${esc(c.claim_status||c.case_status||'–')}</span></div>`;
+  h+='<h3 class="st">Claim approval timeline</h3>';
+  if(!rows||!rows.length){h+=`<div class="empty" style="padding:20px">${esc(c.workflow_note||'No claim workflow captured yet.')}</div>`;}
+  else{h+='<div class="tl">';rows.forEach(r=>{const cl=/hold|stopped|reject/i.test(r.action||'')?' hold':/paid|approv/i.test(r.action||'')?' paid':'';
+    h+=`<div class="step${cl}"><div class="h">${esc(r.action)} · ${esc(r.role_name)} <span class="w">· ${esc(r.date_time)} · ₹${esc(r.amount)}</span></div><div class="r">${fmtRemarks(r.remarks||'')}</div></div>`;});h+='</div>';}
+  $('p-body').innerHTML=h;$('overlay').style.display='block';$('panel').classList.add('open');
+}
+function closePanel(){$('overlay').style.display='none';$('panel').classList.remove('open');}
+$('overlay').onclick=closePanel;
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closePanel();});
+
+$('export-btn').addEventListener('click',async()=>{
+  $('export-btn').textContent='…';
+  const {data:cases}=await sb.from('cases').select('*').order('case_no');
+  const {data:wf}=await sb.from('claim_workflow').select('*').order('case_no').order('row_index');
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cases||[]),'Cases');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(wf||[]),'Claim workflow');
+  XLSX.writeFile(wb,'viswachakra-cases-'+new Date().toISOString().slice(0,10)+'.xlsx');
+  $('export-btn').textContent='⬇ Excel';
+});
+
+let t;$('q').addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{page=1;loadCases();},300);});
+$('status').addEventListener('change',()=>{page=1;loadCases();});
+$('pageSize').addEventListener('change',()=>{page=1;loadCases();});
+$('prev').onclick=()=>{if(page>1){page--;loadCases();}};
+$('next').onclick=()=>{page++;loadCases();};
+
+checkSession();
+</script>
+</body>
+</html>
