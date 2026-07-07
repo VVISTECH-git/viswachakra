@@ -266,7 +266,7 @@ async function scrapeCaseDetails(page) {
 async function scrapeClaimWorkflow(page, log) {
   // wait for the Claim tab to appear, then click it (retry a few times - the tab strip loads late)
   let tabClicked = false;
-  for (let attempt = 0; attempt < 5 && !tabClicked; attempt++) {
+  for (let attempt = 0; attempt < 8 && !tabClicked; attempt++) {
     tabClicked = await page.evaluate(() => {
       const isVisible = (el) => !!(el.offsetWidth || el.offsetHeight);
       const els = Array.from(document.querySelectorAll('a, td, li, span, div'))
@@ -275,7 +275,7 @@ async function scrapeClaimWorkflow(page, log) {
       els[els.length - 1].click();
       return true;
     });
-    if (!tabClicked) await page.waitForTimeout(2500);
+    if (!tabClicked) await page.waitForTimeout(3000);
   }
   if (!tabClicked) {
     // genuinely no Claim tab - confirm the detail page is loaded so we don't misreport a blank page
@@ -449,9 +449,16 @@ async function rescrapeCases(caseNos, opts = {}) {
   context.on('page', (p) => attachDialogHandler(p, log));
 
   try {
-    const page = await login(context, log);
+    let page = await login(context, log);
     for (let i = 0; i < caseNos.length; i++) {
       const caseNo = caseNos[i];
+      // refresh the session every 40 cases - the portal throttles long single sessions
+      if (i > 0 && i % 40 === 0) {
+        log('  (refreshing login to avoid session throttling)');
+        for (const p of context.pages()) { if (p !== page) await p.close().catch(() => {}); }
+        await page.close().catch(() => {});
+        page = await login(context, log);
+      }
       log(`[${i + 1}/${caseNos.length}] ${caseNo}...`);
       try {
         await searchCaseByNo(page, caseNo, log);

@@ -30,12 +30,13 @@ async function main() {
     console.log('===== ' + caseNo + ' =====');
     await page.goto(BASE + '/authUserViewAction.do?actionVal=CasesSearchView&PersistFlag=N&procType=IP', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
+    const seg = caseNo.split('/').pop();
     const fieldSet = await page.evaluate((cn) => {
       const f = document.getElementById('CaseNo');
       if (!f) return 'no CaseNo field';
       f.value = cn;
       return 'set to ' + f.value;
-    }, caseNo);
+    }, seg);
     console.log('  CaseNo field:', fieldSet);
     await page.evaluate(() => { if (typeof fnSearch === 'function') fnSearch(); });
     await page.waitForTimeout(8000);
@@ -50,7 +51,22 @@ async function main() {
     // open the case
     const opened = await page.locator(`a:has-text("${caseNo}")`).first().click().then(() => true).catch(() => false);
     if (!opened) { console.log('  could not open case link\n'); continue; }
-    await page.waitForTimeout(4000);
+    // poll up to 30s for the detail page
+    let loaded = false;
+    for (let k = 0; k < 10; k++) {
+      await page.waitForTimeout(3000);
+      loaded = await page.evaluate(() => { const t = document.body ? document.body.textContent || '' : ''; return /Case Status\s*:/i.test(t) && /Case Sheet/i.test(t); }).catch(() => false);
+      if (loaded) break;
+    }
+    const landed = await page.evaluate(() => ({
+      url: location.href,
+      title: document.title,
+      snippet: (document.body ? document.body.innerText || '' : '').replace(/\s+/g, ' ').slice(0, 300),
+    }));
+    console.log('  after click -> loaded:', loaded, '| url:', landed.url);
+    console.log('  title:', landed.title);
+    console.log('  text snippet:', landed.snippet);
+    await page.screenshot({ path: 'debug/diag-' + seg + '.png', fullPage: false }).catch(() => {});
 
     // dump tab-like elements
     const info = await page.evaluate(() => {
