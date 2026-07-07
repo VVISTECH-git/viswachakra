@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viswachakra claims console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #4f46e5; --primary-dark: #4338ca; --primary-light: #eef2ff;
+    --bg: #f6f7fb; --card: #ffffff; --border: #e5e7ef; --border-strong: #cdd2e0;
+    --text: #101322; --text-2: #4b5265; --text-3: #99a0b5;
+    --amber-bg: #fef3c7; --amber-fg: #92400e; --amber: #f59e0b;
+    --green-bg: #d7f5e3; --green-fg: #065f46; --green: #10b981;
+    --red-bg: #fee2e2; --red-fg: #991b1b;
+    --shadow: 0 1px 2px rgba(16,19,34,.05);
+    --radius: 12px;
+  }
+  html.dark {
+    --primary: #818cf8; --primary-dark: #a5b4fc; --primary-light: #26264a;
+    --bg: #0e1017; --card: #171a24; --border: #262a3a; --border-strong: #363c52;
+    --text: #eceef6; --text-2: #a8aec4; --text-3: #5d6479;
+    --amber-bg: #3a2c10; --amber-fg: #fbbf24;
+    --green-bg: #0d2f22; --green-fg: #34d399;
+    --red-bg: #3b1519; --red-fg: #f87171;
+    --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; transition: background .2s; }
+
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 28px; height: 62px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 20; }
+  .logo { display: flex; align-items: center; gap: 11px; font-size: 15.5px; font-weight: 700; letter-spacing: -.01em; }
+  .logo-mark { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+  .logo small { display: block; font-size: 11px; font-weight: 500; color: var(--text-3); }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 9px; }
+  .sync-pill { font-size: 12px; color: var(--text-2); background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 5px 13px; display: flex; align-items: center; gap: 7px; font-weight: 500; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .dot.busy { background: var(--amber); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  .btn { border: 1px solid var(--border-strong); background: var(--card); color: var(--text); padding: 8px 15px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font-family: inherit; transition: all .12s; }
+  .btn:hover { border-color: var(--primary); color: var(--primary); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  html.dark .btn.primary { color: #0e1017; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.icon-only { padding: 8px 10px; }
+
+  main { max-width: 1320px; margin: 0 auto; padding: 26px 28px 70px; }
+
+  .grid-top { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 17px 19px; box-shadow: var(--shadow); }
+  .kpi .label { font-size: 11.5px; color: var(--text-2); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; display: flex; align-items: center; gap: 6px; }
+  .kpi .value { font-size: 27px; font-weight: 700; margin-top: 5px; letter-spacing: -.02em; }
+  .kpi .value.amber { color: var(--amber-fg); } .kpi .value.green { color: var(--green-fg); }
+  .kpi .hint { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+
+  .breakdown { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 17px 19px; margin-bottom: 20px; box-shadow: var(--shadow); }
+  .breakdown h3 { font-size: 11.5px; color: var(--text-2); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+  .bd-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; cursor: pointer; border-radius: 6px; padding: 2px 4px; }
+  .bd-row:hover { background: var(--bg); }
+  .bd-label { width: 340px; font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bd-bar-wrap { flex: 1; height: 9px; background: var(--bg); border-radius: 5px; overflow: hidden; }
+  .bd-bar { height: 100%; border-radius: 5px; background: var(--primary); }
+  .bd-count { width: 46px; text-align: right; font-size: 12px; font-weight: 600; }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  input[type=text], select { padding: 9px 13px; border: 1px solid var(--border-strong); border-radius: 9px; font-size: 13.5px; background: var(--card); color: var(--text); font-family: inherit; }
+  input[type=text]:focus, select:focus { outline: 2px solid var(--primary-light); border-color: var(--primary); }
+  #q { flex: 1; min-width: 260px; }
+  #status { max-width: 380px; }
+
+  .table-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1900px; }
+  th:first-child, td:first-child { position: sticky; left: 0; background: var(--card); z-index: 2; box-shadow: 1px 0 0 var(--border); }
+  th:first-child { background: var(--bg); z-index: 3; }
+  tr.case-row:hover td:first-child { background: var(--primary-light); }
+  th { text-align: left; padding: 11px 14px; background: var(--bg); color: var(--text-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr.case-row { cursor: pointer; transition: background .1s; }
+  tr.case-row:hover { background: var(--primary-light); }
+  .case-link { color: var(--primary); font-weight: 600; font-size: 12.5px; }
+  .mono { font-size: 12px; color: var(--text-2); }
+  .patient-cell { display: flex; align-items: center; gap: 9px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--primary-light); color: var(--primary); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 4px 11px; border-radius: 12px; background: var(--primary-light); color: var(--primary); max-width: 280px; }
+  .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge.hold { background: var(--amber-bg); color: var(--amber-fg); }
+  .badge.paid { background: var(--green-bg); color: var(--green-fg); }
+  .badge.rejected { background: var(--red-bg); color: var(--red-fg); }
+  .wf-chip { font-size: 11px; font-weight: 600; color: var(--text-2); background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 2px 9px; }
+
+  .pager { display: flex; align-items: center; gap: 12px; padding: 12px 14px; font-size: 12.5px; color: var(--text-2); border-top: 1px solid var(--border); }
+  .pager .grow { flex: 1; }
+  .pager button { padding: 5px 12px; }
+
+  .empty { text-align: center; color: var(--text-3); padding: 44px; }
+  .skeleton td div { height: 13px; border-radius: 5px; background: linear-gradient(90deg, var(--bg) 25%, var(--border) 50%, var(--bg) 75%); background-size: 200% 100%; animation: shimmer 1.3s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  #overlay { position: fixed; inset: 0; background: rgba(10,12,24,.45); z-index: 40; display: none; backdrop-filter: blur(2px); }
+  #panel { position: fixed; top: 0; right: -760px; width: 740px; max-width: 96vw; height: 100vh; background: var(--card); z-index: 50; box-shadow: -16px 0 50px rgba(10,12,24,.25); transition: right .25s ease; display: flex; flex-direction: column; }
+  #panel.open { right: 0; }
+  .panel-head { padding: 18px 26px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 12px; }
+  .panel-head h2 { font-size: 16px; letter-spacing: -.01em; display: flex; align-items: center; gap: 9px; }
+  .copy-btn { border: none; background: var(--bg); color: var(--text-3); border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; font-family: inherit; }
+  .copy-btn:hover { color: var(--primary); }
+  .panel-head .sub { font-size: 12.5px; color: var(--text-2); margin-top: 4px; }
+  .panel-body { padding: 22px 26px; overflow-y: auto; flex: 1; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-bottom: 22px; }
+  .info-item .k { font-size: 10.5px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .info-item .v { font-size: 13px; margin-top: 3px; word-break: break-word; font-weight: 500; }
+  .section-title { font-size: 11.5px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 14px; }
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before { content: ''; position: absolute; left: 7px; top: 8px; bottom: 8px; width: 2px; background: var(--border); }
+  .step { position: relative; margin-bottom: 20px; }
+  .step::before { content: ''; position: absolute; left: -23px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--card); border: 3px solid var(--primary); }
+  .step.hold::before { border-color: var(--amber); }
+  .step.paid::before { border-color: var(--green); }
+  .step .head { font-size: 13px; font-weight: 600; }
+  .step .when { font-size: 12px; color: var(--text-3); font-weight: 400; }
+  .step .remarks { font-size: 12.5px; color: var(--text-2); margin-top: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 10px 13px; line-height: 1.6; }
+  .remarks ol { margin: 2px 0 2px 18px; }
+  .remarks ol li { margin-bottom: 3px; }
+  .remarks .yes { color: var(--green-fg); font-weight: 600; }
+  .remarks .no { color: var(--red-fg); font-weight: 600; }
+  .remarks p { white-space: pre-wrap; }
+
+  .view-toggle { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; margin-left: auto; }
+  .view-toggle button { border: none; background: var(--card); color: var(--text-2); font-size: 11.5px; font-weight: 600; padding: 5px 12px; cursor: pointer; font-family: inherit; }
+  .view-toggle button.active { background: var(--primary); color: #fff; }
+  html.dark .view-toggle button.active { color: #0e1017; }
+  .tl-head { display: flex; align-items: center; margin: 0 0 14px; }
+  .wf-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .wf-table th { text-align: left; padding: 8px 10px; background: var(--bg); color: var(--text-2); font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; border: 1px solid var(--border); white-space: nowrap; }
+  .wf-table td { padding: 8px 10px; border: 1px solid var(--border); vertical-align: top; line-height: 1.5; }
+  .wf-table td.c-dt { white-space: nowrap; color: var(--text-2); }
+  .wf-table td.c-remarks { min-width: 260px; }
+  .wf-table td.c-remarks p { white-space: pre-wrap; margin: 0; }
+  .wf-table td.c-remarks ol { margin: 0 0 0 16px; padding: 0; }
+  .wf-table td.c-amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .wf-table .yes { color: var(--green-fg); font-weight: 600; } .wf-table .no { color: var(--red-fg); font-weight: 600; }
+
+  #sync-modal { position: fixed; inset: 0; background: rgba(10,12,24,.45); z-index: 60; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+  .modal-card { background: var(--card); border-radius: 16px; width: 680px; max-width: 94vw; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(10,12,24,.35); }
+  .modal-head { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+  .modal-head h2 { font-size: 15px; }
+  .modal-body { padding: 20px 24px; overflow-y: auto; }
+  .sync-controls { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
+  .log-box { background: #0b0e18; color: #b6bdd4; font-family: Consolas, monospace; font-size: 11.5px; border-radius: 10px; padding: 13px; height: 210px; overflow-y: auto; white-space: pre-wrap; border: 1px solid var(--border); }
+  .runs-table { font-size: 12px; width: 100%; }
+  .runs-table th { font-size: 10px; padding: 7px 10px; }
+  .runs-table td { padding: 7px 10px; font-size: 12px; }
+  .run-ok { color: var(--green-fg); font-weight: 600; } .run-fail { color: var(--red-fg); font-weight: 600; } .run-running { color: var(--amber-fg); font-weight: 600; }
+  .x-btn { margin-left: auto; background: none; border: none; font-size: 19px; cursor: pointer; color: var(--text-3); }
+  .x-btn:hover { color: var(--text); }
+
+  #toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--text); color: var(--card); padding: 11px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 100; transition: transform .25s; box-shadow: 0 8px 30px rgba(10,12,24,.3); }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  .col-wrap { position: relative; }
+  #col-pop { position: absolute; top: calc(100% + 6px); right: 0; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(10,12,24,.2); padding: 12px 14px; z-index: 30; display: none; width: 230px; }
+  #col-pop.open { display: block; }
+  #col-pop .cp-title { font-size: 11px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 9px; display: flex; align-items: center; }
+  #col-pop .cp-title a { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--primary); cursor: pointer; text-transform: none; letter-spacing: 0; }
+  #col-pop label { display: flex; align-items: center; gap: 9px; font-size: 13px; padding: 4px 2px; cursor: pointer; border-radius: 6px; }
+  #col-pop label:hover { background: var(--bg); }
+  #col-pop label.locked { opacity: .5; cursor: not-allowed; }
+  #col-pop input[type=checkbox] { accent-color: var(--primary); width: 15px; height: 15px; }
+
+  th[draggable="true"] { cursor: grab; }
+  th[draggable="true"]:active { cursor: grabbing; }
+  th.drag-src { opacity: .4; }
+  th.drag-over { box-shadow: inset 3px 0 0 var(--primary); }
+  th .grip { color: var(--text-3); margin-right: 5px; font-size: 11px; vertical-align: 1px; }
+
+  @media (max-width: 900px) { .grid-top { grid-template-columns: 1fr 1fr; } .bd-label { width: 150px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">VC</div>
+    <div>Viswachakra claims console<small>Dr NTR Vaidya Seva · VCOH-MTM</small></div>
+  </div>
+  <div class="header-right">
+    <div class="sync-pill"><span class="dot" id="sync-dot"></span><span id="sync-text">Checking...</span></div>
+    <button class="btn icon-only" id="btn-theme" title="Toggle dark mode">◐</button>
+    <button class="btn" id="btn-export">⬇ Export Excel</button>
+    <button class="btn primary" id="btn-sync">⟳ Sync</button>
+  </div>
+</header>
+
+<main>
+  <div class="grid-top">
+    <div class="kpi"><div class="label">Total cases</div><div class="value" id="k-total">–</div><div class="hint" id="k-sync">–</div></div>
+    <div class="kpi"><div class="label">With claim workflow</div><div class="value" id="k-wf">–</div><div class="hint">deep-scraped claim timelines</div></div>
+    <div class="kpi"><div class="label">Hold / stopped</div><div class="value amber" id="k-hold">–</div><div class="hint">need attention</div></div>
+    <div class="kpi"><div class="label">Paid / credited</div><div class="value green" id="k-paid">–</div><div class="hint">completed claims</div></div>
+  </div>
+
+  <div class="breakdown">
+    <h3>Status breakdown <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-3)">— click a bar to filter</span></h3>
+    <div id="bd"></div>
+  </div>
+
+  <div class="toolbar">
+    <input type="text" id="q" placeholder="Search case no, claim no, patient, card no, phone...">
+    <select id="status"><option value="">All statuses</option></select>
+    <select id="pageSize"><option>25</option><option>50</option><option>100</option><option>200</option></select>
+    <div class="col-wrap">
+      <button class="btn" id="btn-cols">☷ Columns</button>
+      <div id="col-pop">
+        <div class="cp-title">Visible columns <a id="cp-all">show all</a></div>
+        <div id="col-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-scroll">
+    <table id="cases-table">
+      <thead><tr id="thead-row"></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    </div>
+    <div class="pager">
+      <span id="pg-info">–</span>
+      <span class="grow"></span>
+      <button class="btn" id="pg-prev">‹ Prev</button>
+      <span id="pg-cur" style="font-weight:600">1</span>
+      <button class="btn" id="pg-next">Next ›</button>
+    </div>
+  </div>
+</main>
+
+<div id="overlay"></div>
+<div id="panel">
+  <div class="panel-head">
+    <div style="flex:1">
+      <h2><span id="p-title">–</span><button class="copy-btn" id="p-copy">copy</button></h2>
+      <div class="sub" id="p-sub">–</div>
+    </div>
+    <button class="x-btn" onclick="closePanel()">✕</button>
+  </div>
+  <div class="panel-body" id="p-body"></div>
+</div>
+
+<div id="sync-modal">
+  <div class="modal-card">
+    <div class="modal-head"><h2>Sync from portal</h2><button class="x-btn" onclick="closeSync()">✕</button></div>
+    <div class="modal-body">
+      <div class="sync-controls">
+        <label>Window:</label>
+        <select id="sync-hours">
+          <option value="1">Last 1 hour</option>
+          <option value="2" selected>Last 2 hours</option>
+          <option value="24">Last 24 hours</option>
+          <option value="48">Last 2 days</option>
+        </select>
+        <label>Case limit:</label>
+        <select id="sync-limit">
+          <option value="">All</option><option value="3">3 (test)</option><option value="10">10</option><option value="50">50</option>
+        </select>
+        <button class="btn primary" id="btn-run-sync">Start sync</button>
+      </div>
+      <div class="log-box" id="sync-log">No sync running.</div>
+      <h3 class="section-title" style="margin-top:18px;">Recent runs</h3>
+      <table class="runs-table">
+        <thead><tr><th>Started</th><th>Window</th><th>Status</th><th>Found</th><th>Deep</th><th>Message</th></tr></thead>
+        <tbody id="runs"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let page = 1;
+let pollTimer = null;
+let wfView = localStorage.getItem('vc-wfview') || 'timeline';
+
+// ---- theme ----
+if (localStorage.getItem('vc-theme') === 'dark') document.documentElement.classList.add('dark');
+$('btn-theme').onclick = () => {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('vc-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+};
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function badgeClass(status) {
+  if (/hold|stopped|pending/i.test(status || '')) return 'badge hold';
+  if (/paid|approved|credited/i.test(status || '')) return 'badge paid';
+  if (/reject|cancel|terminat/i.test(status || '')) return 'badge rejected';
+  return 'badge';
+}
+const initials = (name) => (name || '?').split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase();
+
+async function loadStats() {
+  const s = await (await fetch('/api/stats')).json();
+  $('k-total').textContent = s.total.toLocaleString();
+  $('k-wf').textContent = s.withWorkflow.toLocaleString();
+  $('k-hold').textContent = s.onHold.toLocaleString();
+  $('k-paid').textContent = s.paid.toLocaleString();
+  $('k-sync').textContent = s.lastSync ? 'last sync ' + new Date(s.lastSync).toLocaleString() : 'never synced';
+  $('sync-dot').className = s.syncRunning ? 'dot busy' : 'dot';
+  $('sync-text').textContent = s.syncRunning ? 'Sync running...' : 'Idle';
+}
+
+async function loadStatuses() {
+  const list = await (await fetch('/api/statuses')).json();
+  const sel = $('status');
+  const current = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  for (const r of list) {
+    const o = document.createElement('option');
+    o.value = r.s; o.textContent = `${r.s} (${r.n})`;
+    sel.appendChild(o);
+  }
+  sel.value = current;
+
+  const max = list.length ? list[0].n : 1;
+  $('bd').innerHTML = list.slice(0, 8).map((r) => `
+    <div class="bd-row" data-status="${esc(r.s)}">
+      <div class="bd-label" title="${esc(r.s)}">${esc(r.s)}</div>
+      <div class="bd-bar-wrap"><div class="bd-bar" style="width:${Math.max(2, Math.round(r.n / max * 100))}%"></div></div>
+      <div class="bd-count">${r.n}</div>
+    </div>`).join('');
+  document.querySelectorAll('.bd-row').forEach((el) => {
+    el.onclick = () => {
+      $('status').value = $('status').value === el.dataset.status ? '' : el.dataset.status;
+      page = 1; loadCases();
+    };
+  });
+}
+
+// ---- column chooser ----
+const dash = '<span style="color:var(--text-3)">–</span>';
+const COLUMNS = [
+  { key: 'case_no', label: 'Case no', locked: true,
+    cell: (c) => `<td class="case-link" style="white-space:nowrap">${esc(c.case_no)}</td>` },
+  { key: 'claim_no', label: 'Claim no', cell: (c) => `<td class="mono">${esc(c.claim_no) || dash}</td>` },
+  { key: 'patient', label: 'Patient',
+    cell: (c) => `<td><div class="patient-cell"><div class="avatar">${esc(initials(c.patient_name))}</div><span style="white-space:nowrap">${esc(c.patient_name)}</span></div></td>` },
+  { key: 'card_no', label: 'Card no', cell: (c) => `<td class="mono">${esc(c.card_no) || dash}</td>` },
+  { key: 'claim_status', label: 'Claim status',
+    cell: (c) => `<td><span class="${badgeClass(c.claim_status)}" title="${esc(c.claim_status)}"><span>${esc(c.claim_status)}</span></span></td>` },
+  { key: 'status_date', label: 'Status date', cell: (c) => `<td class="mono" style="white-space:nowrap">${esc(c.status_date)}</td>` },
+  { key: 'timeline', label: 'Timeline',
+    cell: (c) => `<td>${c.wf_count ? `<span class="wf-chip">${c.wf_count} steps</span>` : dash}</td>` },
+  { key: 'district', label: 'District', cell: (c) => `<td>${esc(c.district) || dash}</td>` },
+  { key: 'mandal', label: 'Mandal', cell: (c) => `<td>${esc(c.mandal) || dash}</td>` },
+  { key: 'village', label: 'Village', cell: (c) => `<td>${esc(c.village) || dash}</td>` },
+  { key: 'contact_no', label: 'Contact', cell: (c) => `<td class="mono">${esc(c.contact_no) || dash}</td>` },
+  { key: 'ip_no', label: 'IP no', cell: (c) => `<td class="mono">${esc(c.ip_no) || dash}</td>` },
+  { key: 'ip_registration_dt', label: 'IP registration', cell: (c) => `<td class="mono" style="white-space:nowrap">${esc(c.ip_registration_dt) || dash}</td>` },
+  { key: 'category', label: 'Category',
+    cell: (c) => `<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.category)}">${esc(c.category) || dash}</td>` },
+  { key: 'procedure', label: 'Procedure',
+    cell: (c) => `<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.procedure_name)}">${esc(c.procedure_name) || dash}</td>` },
+  { key: 'source', label: 'Source', cell: (c) => `<td>${esc(c.source_registration) || dash}</td>` },
+];
+const DEFAULT_COLS = ['case_no', 'claim_no', 'patient', 'card_no', 'claim_status', 'status_date', 'timeline'];
+const COL_BY_KEY = Object.fromEntries(COLUMNS.map((c) => [c.key, c]));
+let visibleCols;
+try { visibleCols = JSON.parse(localStorage.getItem('vc-cols')) || DEFAULT_COLS; } catch (e) { visibleCols = DEFAULT_COLS; }
+// keep only known keys, drop dupes, force case_no first
+visibleCols = visibleCols.filter((k, i) => COL_BY_KEY[k] && visibleCols.indexOf(k) === i);
+visibleCols = ['case_no', ...visibleCols.filter((k) => k !== 'case_no')];
+
+const activeColumns = () => visibleCols.map((k) => COL_BY_KEY[k]).filter(Boolean);
+const saveCols = () => localStorage.setItem('vc-cols', JSON.stringify(visibleCols));
+
+function renderHead() {
+  const cols = activeColumns();
+  $('thead-row').innerHTML = cols.map((c, i) => {
+    const draggable = i > 0; // Case no (pinned) is not draggable
+    return `<th data-key="${c.key}" ${draggable ? 'draggable="true"' : ''}>${draggable ? '<span class="grip">⣿</span>' : ''}${c.label}</th>`;
+  }).join('');
+  $('cases-table').style.minWidth = (cols.length > 8 ? 1900 : 0) + 'px';
+  wireHeaderDrag();
+}
+
+let dragKey = null;
+function wireHeaderDrag() {
+  $('thead-row').querySelectorAll('th[draggable="true"]').forEach((th) => {
+    th.ondragstart = (e) => { dragKey = th.dataset.key; th.classList.add('drag-src'); e.dataTransfer.effectAllowed = 'move'; };
+    th.ondragend = () => { dragKey = null; $('thead-row').querySelectorAll('th').forEach((t) => t.classList.remove('drag-src', 'drag-over')); };
+    th.ondragover = (e) => { e.preventDefault(); if (th.dataset.key !== dragKey) th.classList.add('drag-over'); };
+    th.ondragleave = () => th.classList.remove('drag-over');
+    th.ondrop = (e) => {
+      e.preventDefault();
+      th.classList.remove('drag-over');
+      const targetKey = th.dataset.key;
+      if (!dragKey || dragKey === targetKey || targetKey === 'case_no') return;
+      const from = visibleCols.indexOf(dragKey);
+      visibleCols.splice(from, 1);
+      const to = visibleCols.indexOf(targetKey);
+      visibleCols.splice(to, 0, dragKey); // insert before the drop target
+      saveCols(); renderHead(); loadCases();
+    };
+  });
+}
+
+function renderColChooser() {
+  $('col-list').innerHTML = COLUMNS.map((c) => `
+    <label class="${c.locked ? 'locked' : ''}">
+      <input type="checkbox" data-key="${c.key}" ${visibleCols.includes(c.key) ? 'checked' : ''} ${c.locked ? 'disabled' : ''}>
+      ${c.label}
+    </label>`).join('');
+  $('col-list').querySelectorAll('input').forEach((cb) => {
+    cb.onchange = () => {
+      const key = cb.dataset.key;
+      if (cb.checked) {
+        if (!visibleCols.includes(key)) visibleCols.push(key); // add to the end, keep existing order
+      } else {
+        visibleCols = visibleCols.filter((k) => k !== key);
+      }
+      saveCols(); renderHead(); loadCases();
+    };
+  });
+}
+$('btn-cols').onclick = (e) => { e.stopPropagation(); $('col-pop').classList.toggle('open'); };
+document.addEventListener('click', (e) => { if (!e.target.closest('.col-wrap')) $('col-pop').classList.remove('open'); });
+$('cp-all').onclick = () => {
+  // append any not-yet-visible columns, preserving current order
+  for (const c of COLUMNS) if (!visibleCols.includes(c.key)) visibleCols.push(c.key);
+  saveCols(); renderColChooser(); renderHead(); loadCases();
+};
+
+function skeleton() {
+  const n = activeColumns().length;
+  $('rows').innerHTML = Array(6).fill(0).map(() =>
+    `<tr class="skeleton">${'<td><div></div></td>'.repeat(n)}</tr>`).join('');
+}
+
+async function loadCases() {
+  skeleton();
+  const q = encodeURIComponent($('q').value);
+  const status = encodeURIComponent($('status').value);
+  const ps = $('pageSize').value;
+  const d = await (await fetch(`/api/cases?q=${q}&status=${status}&page=${page}&pageSize=${ps}`)).json();
+  const tb = $('rows');
+  tb.innerHTML = '';
+  if (!d.rows.length) { tb.innerHTML = `<tr><td colspan="${activeColumns().length}" class="empty">No cases found. Try clearing the search or run a sync.</td></tr>`; }
+  for (const c of d.rows) {
+    const tr = document.createElement('tr');
+    tr.className = 'case-row';
+    tr.innerHTML = activeColumns().map((col) => col.cell(c)).join('');
+    tr.onclick = () => showDetail(c.case_no);
+    tb.appendChild(tr);
+  }
+  const from = (d.page - 1) * d.pageSize + 1;
+  const to = Math.min(d.total, d.page * d.pageSize);
+  $('pg-info').textContent = d.total ? `Showing ${from}–${to} of ${d.total.toLocaleString()} cases` : 'No cases';
+  $('pg-cur').textContent = d.page;
+  $('pg-prev').disabled = d.page <= 1;
+  $('pg-next').disabled = to >= d.total;
+}
+
+function formatRemarks(text) {
+  const items = [];
+  const re = /\(\d+\)\s*:\s*/g;
+  if (re.test(text)) {
+    const parts = text.split(/\(\d+\)\s*:\s*/).map((p) => p.trim()).filter(Boolean);
+    let html = '<ol>' + parts.map((p) => '<li>' + esc(p)
+      .replace(/\?\s*YES\b/g, '? <span class="yes">YES</span>')
+      .replace(/\?\s*NO\b/g, '? <span class="no">NO</span>') + '</li>').join('') + '</ol>';
+    return html;
+  }
+  return '<p>' + esc(text) + '</p>';
+}
+
+async function showDetail(caseNo) {
+  const d = await (await fetch('/api/workflow?case=' + encodeURIComponent(caseNo))).json();
+  const c = d.caseRow || {};
+  $('p-title').textContent = c.case_no || caseNo;
+  $('p-sub').textContent = (c.patient_name || '') + (c.nwh_name ? ' · ' + c.nwh_name : '');
+  const info = [
+    ['Claim no', c.claim_no], ['Card no', c.card_no], ['District', c.district], ['Mandal', c.mandal],
+    ['Village', c.village], ['Contact', c.contact_no], ['IP no', c.ip_no], ['IP registration', c.ip_registration_dt],
+    ['Category', c.category], ['Procedure', c.procedure_name],
+  ];
+  let html = '<div class="info-grid">' + info.map(([k, v]) =>
+    `<div class="info-item"><div class="k">${k}</div><div class="v">${esc(v) || '<span style="color:var(--text-3)">–</span>'}</div></div>`).join('') + '</div>';
+  html += `<div style="margin-bottom:22px"><span class="${badgeClass(c.claim_status)}" style="max-width:none"><span>${esc(c.claim_status || c.case_status || '–')}</span></span></div>`;
+  html += `<div class="tl-head"><h3 class="section-title" style="margin:0">Claim approval timeline</h3>
+    <div class="view-toggle">
+      <button id="vt-timeline" class="${wfView === 'timeline' ? 'active' : ''}">Timeline</button>
+      <button id="vt-table" class="${wfView === 'table' ? 'active' : ''}">Table</button>
+    </div></div>`;
+  if (!d.rows.length) {
+    html += `<div class="empty" style="padding:22px">${esc(c.workflow_note || 'No claim workflow captured yet. Run a sync to fetch it.')}</div>`;
+  } else if (wfView === 'table') {
+    html += `<table class="wf-table"><thead><tr>
+        <th>Date &amp; Time</th><th>Role &amp; Name</th><th>Remarks</th><th>Action</th><th style="text-align:right">Amount</th>
+      </tr></thead><tbody>`;
+    for (const r of d.rows) {
+      html += `<tr>
+        <td class="c-dt">${esc(r.date_time)}</td>
+        <td>${esc(r.role_name)}</td>
+        <td class="c-remarks">${formatRemarks(r.remarks || '')}</td>
+        <td>${esc(r.action)}</td>
+        <td class="c-amt">₹${esc(r.amount)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    if (c.workflow_note) html += `<div style="font-size:12px;color:var(--text-3);margin-top:8px">${esc(c.workflow_note)}</div>`;
+  } else {
+    html += '<div class="timeline">';
+    for (const r of d.rows) {
+      const cls = /hold|stopped|reject/i.test(r.action || '') ? ' hold' : /paid|approv/i.test(r.action || '') ? ' paid' : '';
+      html += `<div class="step${cls}">
+        <div class="head">${esc(r.action)} · ${esc(r.role_name)} <span class="when">· ${esc(r.date_time)} · ₹${esc(r.amount)}</span></div>
+        <div class="remarks">${formatRemarks(r.remarks || '')}</div>
+      </div>`;
+    }
+    html += '</div>';
+    if (c.workflow_note) html += `<div style="font-size:12px;color:var(--text-3);margin-top:6px">${esc(c.workflow_note)}</div>`;
+  }
+  $('p-body').innerHTML = html;
+  const setView = (v) => { wfView = v; localStorage.setItem('vc-wfview', v); showDetail(caseNo); };
+  if ($('vt-timeline')) $('vt-timeline').onclick = () => setView('timeline');
+  if ($('vt-table')) $('vt-table').onclick = () => setView('table');
+  $('overlay').style.display = 'block';
+  $('panel').classList.add('open');
+}
+function closePanel() { $('overlay').style.display = 'none'; $('panel').classList.remove('open'); }
+$('overlay').onclick = closePanel;
+$('p-copy').onclick = () => {
+  navigator.clipboard.writeText($('p-title').textContent).then(() => toast('Case number copied'));
+};
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePanel(); closeSync(); } });
+
+// ---- sync modal ----
+function openSync() { $('sync-modal').style.display = 'flex'; refreshSyncStatus(); pollTimer = setInterval(refreshSyncStatus, 4000); }
+function closeSync() { $('sync-modal').style.display = 'none'; clearInterval(pollTimer); }
+$('btn-sync').onclick = openSync;
+
+async function refreshSyncStatus() {
+  const s = await (await fetch('/api/sync/status')).json();
+  const box = $('sync-log');
+  box.textContent = s.log.length ? s.log.join('\n') : (s.running ? 'Starting...' : 'No sync running.');
+  box.scrollTop = box.scrollHeight;
+  $('btn-run-sync').disabled = s.running;
+  $('btn-run-sync').textContent = s.running ? 'Sync running...' : 'Start sync';
+  $('runs').innerHTML = s.history.map((r) => `<tr>
+    <td style="white-space:nowrap">${r.started_at ? new Date(r.started_at).toLocaleString() : ''}</td>
+    <td style="white-space:nowrap">${esc(r.from_dt)} → ${esc(r.to_dt)}</td>
+    <td class="run-${r.status === 'success' ? 'ok' : r.status === 'failed' ? 'fail' : 'running'}">${esc(r.status)}</td>
+    <td>${r.total_found}</td><td>${r.deep_scraped}</td>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.message)}">${esc(r.message)}</td>
+  </tr>`).join('');
+  loadStats();
+}
+
+$('btn-run-sync').onclick = async () => {
+  const body = { hours: parseFloat($('sync-hours').value) };
+  if ($('sync-limit').value) body.limit = parseInt($('sync-limit').value, 10);
+  const r = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (r.status === 409) toast('A sync is already running');
+  else toast('Sync started');
+  refreshSyncStatus();
+};
+
+$('btn-export').onclick = () => {
+  const q = encodeURIComponent($('q').value);
+  const status = encodeURIComponent($('status').value);
+  toast('Preparing Excel export...');
+  window.location = `/api/export?q=${q}&status=${status}`;
+};
+
+// ---- wiring ----
+let t;
+$('q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { page = 1; loadCases(); }, 300); });
+$('status').addEventListener('change', () => { page = 1; loadCases(); });
+$('pageSize').addEventListener('change', () => { page = 1; loadCases(); });
+$('pg-prev').onclick = () => { if (page > 1) { page--; loadCases(); } };
+$('pg-next').onclick = () => { page++; loadCases(); };
+
+renderHead(); renderColChooser();
+loadStats(); loadStatuses(); loadCases();
+setInterval(() => { loadStats(); loadStatuses(); }, 15000);
+</script>
+</body>
+</html>

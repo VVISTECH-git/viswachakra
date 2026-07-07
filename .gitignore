@@ -1,0 +1,12 @@
+# secrets - never commit
+.env
+
+# dependencies
+node_modules/
+
+# local database + scraper artifacts
+cases.db
+cases.db-*
+debug/
+*.png
+*.log

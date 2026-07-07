@@ -1,0 +1,31 @@
+name: Portal reachability test
+
+# Run manually from the Actions tab to check if a cloud IP can reach + log into the portal
+on:
+  workflow_dispatch:
+
+jobs:
+  reachability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Show this runner's public IP
+        run: curl -s https://ifconfig.me ; echo ""
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm init -y
+          npm install playwright
+          npx playwright install --with-deps chromium
+
+      - name: Run reachability test
+        env:
+          LOGIN_URL: ${{ secrets.LOGIN_URL }}
+          VAIDYA_USERNAME: ${{ secrets.VAIDYA_USERNAME }}
+          VAIDYA_PASSWORD: ${{ secrets.VAIDYA_PASSWORD }}
+        run: node reachability-test.js
