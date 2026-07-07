@@ -161,6 +161,12 @@
         <div class="chart-card"><h3 class="ctitle">Money stuck by age of claim</h3><div class="cwrap"><canvas id="c-aging"></canvas></div></div>
         <div class="chart-card"><h3 class="ctitle">Where claims are right now</h3><div class="cwrap"><canvas id="c-status"></canvas></div></div>
         <div class="chart-card"><h3 class="ctitle">Deduction rate by month (%)</h3><div class="cwrap"><canvas id="c-ded"></canvas></div></div>
+        <div class="chart-card"><h3 class="ctitle">Where the claimed money went</h3><div class="cwrap"><canvas id="c-outcome"></canvas></div></div>
+        <div class="chart-card"><h3 class="ctitle">Claims submitted per month</h3><div class="cwrap"><canvas id="c-volume"></canvas></div></div>
+        <div class="chart-card"><h3 class="ctitle">How long claims take to settle</h3><div class="cwrap"><canvas id="c-tatdist"></canvas></div></div>
+        <div class="chart-card"><h3 class="ctitle">Rupees deducted per month</h3><div class="cwrap"><canvas id="c-dedamt"></canvas></div></div>
+        <div class="chart-card"><h3 class="ctitle">Top procedures by volume</h3><div class="cwrap"><canvas id="c-proc"></canvas></div></div>
+        <div class="chart-card"><h3 class="ctitle">Why claims are stuck (unpaid)</h3><div class="cwrap"><canvas id="c-stuck"></canvas></div></div>
       </div>
     </div>
   </main>
@@ -275,12 +281,13 @@ const charts={};
 function makeChart(id,cfg){if(charts[id])charts[id].destroy();charts[id]=new Chart($(id),cfg);}
 
 async function loadDashboard(){
-  const cases=await fetchAll('cases','case_no,claim_status,status_date');
+  const cases=await fetchAll('cases','case_no,claim_status,status_date,procedure_name');
   const wf=await fetchAll('claim_workflow','case_no,row_index,date_time,action,amount');
   const byCase={};wf.forEach(r=>{(byCase[r.case_no]=byCase[r.case_no]||[]).push(r);});
   const now=new Date();
   let totClaimed=0,totPaid=0,totDed=0,pendVal=0,paidCount=0,tatSum=0,tatN=0,tatMax=0,oldVal=0,oldN=0;
   const monMoney={},monTat={},monDed={},aging={'0–30 days':0,'31–60':0,'61–90':0,'90+ days':0},statusCount={};
+  const monCount={},procCount={},tatDist={'0–30':0,'31–60':0,'61–90':0,'91–180':0,'180+':0},pendStatus={};
 
   cases.forEach(c=>{
     const rows=(byCase[c.case_no]||[]).sort((a,b)=>a.row_index-b.row_index);
@@ -288,16 +295,20 @@ async function loadDashboard(){
     const paidRow=[...rows].reverse().find(r=>/paid/i.test(r.action||''));
     const claimed=initiated?parseAmt(initiated.amount):0;
     const initAt=initiated?parseWfDate(initiated.date_time):null;
+    if(initAt)monCount[monKey(initAt)]=(monCount[monKey(initAt)]||0)+1;
+    if(c.procedure_name){const p=String(c.procedure_name).replace(/\s*\(.*$/,'').trim()||'(unspecified)';procCount[p]=(procCount[p]||0)+1;}
     if(claimed>0){totClaimed+=claimed;if(initAt){const k=monKey(initAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).c+=claimed;}}
     if(paidRow){
       const paid=parseAmt(paidRow.amount),paidAt=parseWfDate(paidRow.date_time);
       totPaid+=paid;paidCount++;const ded=Math.max(0,claimed-paid);totDed+=ded;
       if(paidAt){const k=monKey(paidAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).p+=paid;const md=(monDed[k]=monDed[k]||{d:0,b:0});md.d+=ded;md.b+=claimed;}
-      if(initAt&&paidAt){const days=Math.round((paidAt-initAt)/864e5);if(days>=0){tatSum+=days;tatN++;if(days>tatMax)tatMax=days;const k=monKey(paidAt);const mt=(monTat[k]=monTat[k]||{s:0,n:0});mt.s+=days;mt.n++;}}
+      if(initAt&&paidAt){const days=Math.round((paidAt-initAt)/864e5);if(days>=0){tatSum+=days;tatN++;if(days>tatMax)tatMax=days;const k=monKey(paidAt);const mt=(monTat[k]=monTat[k]||{s:0,n:0});mt.s+=days;mt.n++;
+        if(days<=30)tatDist['0–30']++;else if(days<=60)tatDist['31–60']++;else if(days<=90)tatDist['61–90']++;else if(days<=180)tatDist['91–180']++;else tatDist['180+']++;}}
     }else{
       pendVal+=claimed;const sd=parseStatusDate(c.status_date)||initAt;const age=sd?Math.round((now-sd)/864e5):0;
       if(age<=30)aging['0–30 days']+=claimed;else if(age<=60)aging['31–60']+=claimed;else if(age<=90)aging['61–90']+=claimed;else aging['90+ days']+=claimed;
       if(age>90){oldVal+=claimed;oldN++;}
+      if(c.claim_status)pendStatus[c.claim_status]=(pendStatus[c.claim_status]||0)+1;
     }
     if(c.claim_status)statusCount[c.claim_status]=(statusCount[c.claim_status]||0)+1;
   });
@@ -342,6 +353,45 @@ async function loadDashboard(){
   makeChart('c-ded',{type:'line',data:{labels:dedMonths.map(monLabel),datasets:[
     {label:'Deduction %',data:dedMonths.map(k=>+(monDed[k].d/monDed[k].b*100).toFixed(1)),borderColor:'#ef4444',backgroundColor:'#ef4444',tension:.3,fill:false}]},
     options:baseOpts({scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>v+'%'}}}})});
+
+  makeChart('c-outcome',{
+    type:'doughnut',
+    data:{labels:['Received','Deducted','Still pending'],datasets:[{data:[Math.round(totPaid),Math.round(totDed),Math.round(pendVal)],backgroundColor:['#10b981','#ef4444','#f59e0b']}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.label+': '+inrShort(ctx.parsed)}}}}
+  });
+
+  const volMonths=Object.keys(monCount).sort();
+  makeChart('c-volume',{
+    type:'bar',
+    data:{labels:volMonths.map(monLabel),datasets:[{label:'Claims',data:volMonths.map(k=>monCount[k]),backgroundColor:'#6366f1'}]},
+    options:baseOpts({plugins:{legend:{display:false}}})
+  });
+
+  makeChart('c-tatdist',{
+    type:'bar',
+    data:{labels:Object.keys(tatDist),datasets:[{label:'Claims settled',data:Object.values(tatDist),backgroundColor:['#93c5fd','#6ee7b7','#fcd34d','#fb923c','#ef4444']}]},
+    options:baseOpts({plugins:{legend:{display:false}}})
+  });
+
+  makeChart('c-dedamt',{
+    type:'bar',
+    data:{labels:dedMonths.map(monLabel),datasets:[{label:'Deducted (₹)',data:dedMonths.map(k=>monDed[k].d),backgroundColor:'#ef4444'}]},
+    options:baseOpts({plugins:{legend:{display:false}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>inrShort(v)}}}})
+  });
+
+  const topProc=Object.entries(procCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  makeChart('c-proc',{
+    type:'bar',
+    data:{labels:topProc.map(p=>p[0].length>32?p[0].slice(0,32)+'…':p[0]),datasets:[{label:'Claims',data:topProc.map(p=>p[1]),backgroundColor:'#8b5cf6'}]},
+    options:baseOpts({indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10}}}}})
+  });
+
+  const topStuck=Object.entries(pendStatus).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  makeChart('c-stuck',{
+    type:'bar',
+    data:{labels:topStuck.map(s=>s[0].length>32?s[0].slice(0,32)+'…':s[0]),datasets:[{label:'Unpaid claims',data:topStuck.map(s=>s[1]),backgroundColor:'#f59e0b'}]},
+    options:baseOpts({indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10}}}}})
+  });
 
   $('dash-loading').style.display='none';$('dash-content').style.display='block';
 }
