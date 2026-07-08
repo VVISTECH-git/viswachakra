@@ -237,6 +237,7 @@
           <div class="chart-card"><h3 class="ctitle">Paid vs still-pending — by month raised</h3><p class="cdesc">For each month you submitted claims, how many have actually been paid (green) versus how many are still waiting (amber). Tall amber columns in recent months = a whole month of your claims the insurer hasn't touched.</p><div class="cwrap"><canvas id="c-cohort"></canvas></div></div>
           <div class="chart-card"><h3 class="ctitle">How long settled claims took (distribution)</h3><p class="cdesc">Of the claims that HAVE been paid, how long each one took — sorted into time bands. Bars stacking up on the right (91–180, 180+ days) mean most claims dragged past three to six months before payment.</p><div class="cwrap"><canvas id="c-tatdist"></canvas></div></div>
           <div class="chart-card"><h3 class="ctitle">Avg settlement time by month paid</h3><p class="cdesc">The same delay seen from the payment side: for claims paid in each month, how many days they'd been waiting on average before the money finally came.</p><div class="cwrap"><canvas id="c-tat"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">How fast do you get paid?</h3><p class="cdesc">Of the claims that were settled, the share paid within 3 months (green), in 3–6 months (amber), or dragging past 6 months (red). A big red slice is the headline — most payments take over half a year.</p><div class="cwrap"><canvas id="c-speed"></canvas></div></div>
           <div class="chart-card wide"><h3 class="ctitle">Claims paid per month (count)</h3><p class="cdesc">How many claims the insurer actually settled each month. Notice the spikes — they clear big batches all at once, then go quiet for months. Steady payment would look flat; this looks like a heartbeat.</p><div class="cwrap"><canvas id="c-paidcnt"></canvas></div></div>
         </div>
       </div>
@@ -535,6 +536,13 @@ async function loadDashboard(){
       {label:'Paid',data:cohMonths.map(k=>cohPaid[k]||0),backgroundColor:'#10b981'},
       {label:'Still pending',data:cohMonths.map(k=>cohPend[k]||0),backgroundColor:'#f59e0b'}]},
     options:baseOpts({scales:{x:{stacked:true,grid:{color:gridClr},ticks:{font:{size:10}}},y:{stacked:true,grid:{color:gridClr},ticks:{font:{size:10}}}}})
+  });
+
+  const fastN=tatDist['0–30']+tatDist['31–60']+tatDist['61–90'], midN=tatDist['91–180'], slowN=tatDist['180+'];
+  makeChart('c-speed',{
+    type:'doughnut',
+    data:{labels:['Within 3 months','3–6 months','Over 6 months'],datasets:[{data:[fastN,midN,slowN],backgroundColor:['#10b981','#f59e0b','#ef4444']}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}}}
   });
 
   const pcMonths=Object.keys(monPaidCnt).sort();
