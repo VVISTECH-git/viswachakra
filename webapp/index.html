@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Viswachakra Claims</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -15,7 +16,14 @@
     --radius:12px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter',system-ui,sans-serif;background:linear-gradient(180deg,#eef0fc 0%,#f6f7fb 340px);background-attachment:fixed;color:var(--text);font-size:14px}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--text);font-size:14px;
+    background:
+      radial-gradient(circle at 0% 0%, rgba(99,102,241,.22), transparent 34%),
+      radial-gradient(circle at 100% 2%, rgba(236,72,153,.18), transparent 32%),
+      radial-gradient(circle at 8% 100%, rgba(20,184,166,.16), transparent 34%),
+      radial-gradient(circle at 100% 100%, rgba(245,158,11,.14), transparent 34%),
+      #eef0f9;
+    background-attachment:fixed}
 
   /* login */
   #login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 45%,#ec4899 100%)}
