@@ -93,6 +93,9 @@
   .chart-grid .chart-card:nth-child(4n+3){border-top-color:#f59e0b}
   .chart-grid .chart-card:nth-child(4n+4){border-top-color:#ec4899}
   .chart-card.wide{grid-column:1 / -1}
+  .chart-card,.mcard{transition:transform .16s ease, box-shadow .16s ease}
+  .chart-card:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(60,50,180,.14)}
+  .mcard:hover{transform:translateY(-3px);box-shadow:0 16px 32px rgba(60,50,180,.28)}
   .ctitle{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:6px}
   .cdesc{font-size:11.5px;color:var(--text-3);margin:0 0 12px;line-height:1.5}
   .dtabs{display:flex;gap:4px;margin:2px 0 16px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
@@ -309,6 +312,8 @@ const sb=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY,{au
 let page=1;
 let wfView=localStorage.getItem('vc-wfview')||'table';
 let curCase=null;
+if(window.Chart){const C=window.Chart;C.defaults.font.family="Inter, system-ui, sans-serif";C.defaults.color="#4b5265";C.defaults.elements.bar.borderRadius=6;C.defaults.elements.bar.borderSkipped=false;C.defaults.elements.point.radius=3;C.defaults.elements.point.hoverRadius=5;C.defaults.plugins.legend.labels.usePointStyle=true;C.defaults.plugins.tooltip.padding=10;C.defaults.plugins.tooltip.cornerRadius=8;C.defaults.plugins.tooltip.boxPadding=5;C.defaults.plugins.tooltip.titleFont={size:12,weight:'600'};C.defaults.plugins.tooltip.bodyFont={size:12};}
+function animateNum(el,target){if(target==null){el.textContent='–';return;}const dur=850,t0=performance.now();(function step(t){const p=Math.min(1,(t-t0)/dur);el.textContent=Math.round(target*(1-Math.pow(1-p,3))).toLocaleString('en-IN');if(p<1)requestAnimationFrame(step);})(performance.now());}
 
 function badge(s){if(/hold|stopped|pending/i.test(s||''))return'badge hold';if(/paid|approved|credited/i.test(s||''))return'badge paid';if(/reject|cancel|terminat/i.test(s||''))return'badge rej';return'badge';}
 
@@ -444,14 +449,14 @@ async function loadDashboard(){
   $('m-ded').textContent=inrShort(totDed);$('m-ded-pct').textContent=dedPct.toFixed(1)+'% of settled value';
   $('m-pend').textContent=inrShort(pendVal);$('m-pend-n').textContent=(cases.length-paidCount).toLocaleString()+' claims unpaid';
   const avgD=tatN?Math.round(tatSum/tatN):null;
-  $('h-days').textContent=avgD?avgD.toLocaleString('en-IN'):'–';
+  animateNum($('h-days'),avgD);
   $('h-sub').textContent=avgD?`average wait from claim submission to payment — about ${(avgD/30).toFixed(1)} months (based on ${paidCount.toLocaleString()} settled claims; still-unpaid claims will push this higher)`:'not enough settled claims yet to measure';
   $('h-ded').textContent=inrShort(totDed);
   $('h-stuck').textContent=inrShort(pendVal);
-  $('m-tat').textContent=tatN?Math.round(tatSum/tatN):'–';
-  $('m-tatmax').textContent=tatMax||'–';
+  animateNum($('m-tat'),tatN?Math.round(tatSum/tatN):null);
+  animateNum($('m-tatmax'),tatMax||null);
   $('m-old').textContent=inrShort(oldVal);$('m-old-n').textContent=oldN.toLocaleString()+' claims';
-  $('m-paidn').textContent=paidCount.toLocaleString();
+  animateNum($('m-paidn'),paidCount);
 
   const months=Object.keys(monMoney).sort();
   const mlabels=months.map(monLabel);
