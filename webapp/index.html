@@ -183,6 +183,7 @@
       <button id="nav-dash" class="on">Dashboard</button>
       <button id="nav-cases">Cases</button>
       <button id="nav-summary">Summary</button>
+      <button id="nav-followup">Follow-up</button>
     </nav>
     <div class="hright">
       <span class="pill" id="sync-pill">–</span>
@@ -315,6 +316,25 @@
       </div>
     </div>
   </main>
+
+  <main id="view-followup" style="display:none">
+    <div id="fu-loading" class="empty" style="padding:60px">Loading follow-up list…</div>
+    <div id="fu-content" style="display:none">
+      <div class="toolbar">
+        <input type="text" id="fu-q" placeholder="Search unpaid cases — case no, patient, claim no...">
+      </div>
+      <div class="card">
+        <table style="table-layout:fixed">
+          <thead><tr><th style="width:17%">Case no</th><th style="width:17%">Patient</th><th style="width:12%">Total claimed</th><th style="width:15%">IP registration</th><th style="width:15%">Status date</th><th style="width:24%">Latest comment</th></tr></thead>
+          <tbody id="fu-rows"></tbody>
+        </table>
+        <div class="pager">
+          <span id="fu-info">–</span><span class="grow"></span>
+          <button class="btn sm ghost" id="fu-prev">‹ Prev</button><span id="fu-cur">1</span><button class="btn sm ghost" id="fu-next">Next ›</button>
+        </div>
+      </div>
+    </div>
+  </main>
 </div>
 
 <div id="overlay"></div>
@@ -379,16 +399,17 @@ function setupNav(){
   $('nav-summary').onclick=()=>switchView('summary');
 }
 function switchView(v){
-  ['dash','cases','summary'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
+  ['dash','cases','summary','followup'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
   if(v==='dash')resizeCharts();
   if(v==='summary')loadSummary();
+  if(v==='followup')loadFollowup();
 }
 
 // ---- Summary tab: per-case claimed / paid / latest comment ----
-let sumData=null, sumPage=1;
-async function loadSummary(){
+let sumData=null, sumPage=1, fuPage=1;
+async function ensureSummaryData(){
   if(sumData)return;
-  const cases=await fetchAll('cases','case_no,patient_name,claim_no,claim_status');
+  const cases=await fetchAll('cases','case_no,patient_name,claim_no,claim_status,ip_registration_dt,status_date');
   const wf=await fetchAll('claim_workflow','case_no,row_index,action,amount,remarks,role_name');
   const byCase={};wf.forEach(r=>{(byCase[r.case_no]=byCase[r.case_no]||[]).push(r);});
   sumData=cases.map(c=>{
@@ -398,13 +419,36 @@ async function loadSummary(){
     const last=rows[rows.length-1];
     return {
       case_no:c.case_no, patient_name:c.patient_name, claim_no:c.claim_no,
+      ip_reg:c.ip_registration_dt||'', status_date:c.status_date||'',
       claimed:initiated?parseAmt(initiated.amount):0,
       paid:paidRow?parseAmt(paidRow.amount):null,
       comment:last?(last.remarks||''):'', comment_by:last?(last.role_name||last.action||''):'',
     };
   });
-  $('sum-loading').style.display='none';$('sum-content').style.display='block';
-  renderSummary();
+}
+async function loadSummary(){await ensureSummaryData();$('sum-loading').style.display='none';$('sum-content').style.display='block';renderSummary();}
+async function loadFollowup(){await ensureSummaryData();$('fu-loading').style.display='none';$('fu-content').style.display='block';renderFollowup();}
+function renderFollowup(){
+  const q=($('fu-q').value||'').trim().toLowerCase();
+  let rows=(sumData||[]).filter(r=>r.paid==null); // exclude payment-done cases
+  if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')).toLowerCase().includes(q));
+  const ps=25, total=rows.length, from=(fuPage-1)*ps, pageRows=rows.slice(from,from+ps);
+  const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');
+  const tb=$('fu-rows');
+  tb.innerHTML=pageRows.length?pageRows.map(r=>{
+    const cmt=esc(r.comment).slice(0,120);
+    return `<tr class="row" data-case="${esc(r.case_no)}">
+      <td class="link" style="white-space:nowrap">${esc(r.case_no)}</td>
+      <td>${esc(r.patient_name)}</td>
+      <td style="white-space:nowrap;font-weight:600">${inr(r.claimed)}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.ip_reg)||'–'}</td>
+      <td class="mono" style="white-space:nowrap">${esc(r.status_date)||'–'}</td>
+      <td style="color:var(--text-2)" title="${esc(r.comment)}">${cmt}${r.comment.length>120?'…':''}</td>
+    </tr>`;}).join(''):'<tr><td colspan="6" class="empty">No unpaid cases found</td></tr>';
+  tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.case));
+  const to=Math.min(total,fuPage*ps);
+  $('fu-info').textContent=total?`Showing ${from+1}–${to} of ${total.toLocaleString()} unpaid cases`:'No unpaid cases';
+  $('fu-cur').textContent=fuPage;$('fu-prev').disabled=fuPage<=1;$('fu-next').disabled=to>=total;
 }
 function renderSummary(){
   const q=($('sum-q').value||'').trim().toLowerCase();
@@ -745,6 +789,9 @@ $('next').onclick=()=>{page++;loadCases();};
 let ts;$('sum-q').addEventListener('input',()=>{clearTimeout(ts);ts=setTimeout(()=>{sumPage=1;renderSummary();},250);});
 $('sum-prev').onclick=()=>{if(sumPage>1){sumPage--;renderSummary();}};
 $('sum-next').onclick=()=>{sumPage++;renderSummary();};
+let tf;$('fu-q').addEventListener('input',()=>{clearTimeout(tf);tf=setTimeout(()=>{fuPage=1;renderFollowup();},250);});
+$('fu-prev').onclick=()=>{if(fuPage>1){fuPage--;renderFollowup();}};
+$('fu-next').onclick=()=>{fuPage++;renderFollowup();};
 
 checkSession();
 </script>
