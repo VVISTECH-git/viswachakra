@@ -397,6 +397,7 @@ function setupNav(){
   $('nav-dash').onclick=()=>switchView('dash');
   $('nav-cases').onclick=()=>switchView('cases');
   $('nav-summary').onclick=()=>switchView('summary');
+  $('nav-followup').onclick=()=>switchView('followup');
 }
 function switchView(v){
   ['dash','cases','summary','followup'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
