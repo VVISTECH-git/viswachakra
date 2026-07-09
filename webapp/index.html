@@ -182,6 +182,7 @@
     <nav class="nav">
       <button id="nav-dash" class="on">Dashboard</button>
       <button id="nav-cases">Cases</button>
+      <button id="nav-summary">Summary</button>
     </nav>
     <div class="hright">
       <span class="pill" id="sync-pill">–</span>
@@ -243,6 +244,7 @@
           <div class="chart-card"><h3 class="ctitle">Avg settlement time by month paid</h3><p class="cdesc">The same delay seen from the payment side: for claims paid in each month, how many days they'd been waiting on average before the money finally came.</p><div class="cwrap"><canvas id="c-tat"></canvas></div></div>
           <div class="chart-card"><h3 class="ctitle">How fast do you get paid?</h3><p class="cdesc">Of the claims that were settled, the share paid within 3 months (green), in 3–6 months (amber), or dragging past 6 months (red). A big red slice is the headline — most payments take over half a year.</p><div class="cwrap"><canvas id="c-speed"></canvas></div></div>
           <div class="chart-card wide"><h3 class="ctitle">Claims paid per month (count)</h3><p class="cdesc">How many claims the insurer actually settled each month. Notice the spikes — they clear big batches all at once, then go quiet for months. Steady payment would look flat; this looks like a heartbeat.</p><div class="cwrap"><canvas id="c-paidcnt"></canvas></div></div>
+          <div class="chart-card wide"><h3 class="ctitle">Claim size vs time to settle</h3><p class="cdesc">Every dot is a settled claim: how much it was for (left–right) versus how long it took to get paid (up–down). If the dots drift upward as you go right, bigger claims take longer to pay.</p><div class="cwrap"><canvas id="c-scatter"></canvas></div></div>
         </div>
       </div>
 
@@ -256,7 +258,8 @@
       <div class="dtab" id="dt-pending" style="display:none">
         <div class="chart-grid">
           <div class="chart-card"><h3 class="ctitle">Money stuck by age of claim</h3><p class="cdesc">Of the money still unpaid, how long it's been waiting. The red bar (90+ days) is your money frozen for over three months — the older it gets, the harder it is to recover.</p><div class="cwrap"><canvas id="c-aging"></canvas></div></div>
-          <div class="chart-card"><h3 class="ctitle">Why claims are stuck (unpaid)</h3><p class="cdesc">The reasons your unpaid claims are held up — patient feedback pending, queries raised, sent back, and so on. This is your action list: the top bars are what to chase first to unlock payment.</p><div class="cwrap"><canvas id="c-stuck"></canvas></div></div>
+          <div class="chart-card"><h3 class="ctitle">Money stuck by age (polar view)</h3><p class="cdesc">The same stuck-money aging, shown as a polar chart — each wedge is a time band, and the further it reaches out, the more money is frozen in that age group. The big outer wedge is your oldest, hardest-to-recover money.</p><div class="cwrap"><canvas id="c-agingpolar"></canvas></div></div>
+          <div class="chart-card wide"><h3 class="ctitle">Why claims are stuck (unpaid)</h3><p class="cdesc">The reasons your unpaid claims are held up — patient feedback pending, queries raised, sent back, and so on. This is your action list: the top bars are what to chase first to unlock payment.</p><div class="cwrap"><canvas id="c-stuck"></canvas></div></div>
         </div>
       </div>
 
@@ -290,6 +293,25 @@
       <div class="pager">
         <span id="pg-info">–</span><span class="grow"></span>
         <button class="btn sm ghost" id="prev">‹ Prev</button><span id="pg-cur">1</span><button class="btn sm ghost" id="next">Next ›</button>
+      </div>
+    </div>
+  </main>
+
+  <main id="view-summary" style="display:none">
+    <div id="sum-loading" class="empty" style="padding:60px">Loading claim summary…</div>
+    <div id="sum-content" style="display:none">
+      <div class="toolbar">
+        <input type="text" id="sum-q" placeholder="Search case no, patient, claim no...">
+      </div>
+      <div class="card">
+        <table style="table-layout:fixed">
+          <thead><tr><th style="width:19%">Case no</th><th style="width:18%">Patient</th><th style="width:13%">Total claimed</th><th style="width:13%">Total paid</th><th style="width:37%">Latest comment</th></tr></thead>
+          <tbody id="sum-rows"></tbody>
+        </table>
+        <div class="pager">
+          <span id="sum-info">–</span><span class="grow"></span>
+          <button class="btn sm ghost" id="sum-prev">‹ Prev</button><span id="sum-cur">1</span><button class="btn sm ghost" id="sum-next">Next ›</button>
+        </div>
       </div>
     </div>
   </main>
@@ -354,13 +376,57 @@ function showApp(){$('login').style.display='none';$('app').style.display='block
 function setupNav(){
   $('nav-dash').onclick=()=>switchView('dash');
   $('nav-cases').onclick=()=>switchView('cases');
+  $('nav-summary').onclick=()=>switchView('summary');
 }
 function switchView(v){
-  $('nav-dash').classList.toggle('on',v==='dash');
-  $('nav-cases').classList.toggle('on',v==='cases');
-  $('view-dash').style.display=v==='dash'?'block':'none';
-  $('view-cases').style.display=v==='cases'?'block':'none';
+  ['dash','cases','summary'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
   if(v==='dash')resizeCharts();
+  if(v==='summary')loadSummary();
+}
+
+// ---- Summary tab: per-case claimed / paid / latest comment ----
+let sumData=null, sumPage=1;
+async function loadSummary(){
+  if(sumData)return;
+  const cases=await fetchAll('cases','case_no,patient_name,claim_no,claim_status');
+  const wf=await fetchAll('claim_workflow','case_no,row_index,action,amount,remarks,role_name');
+  const byCase={};wf.forEach(r=>{(byCase[r.case_no]=byCase[r.case_no]||[]).push(r);});
+  sumData=cases.map(c=>{
+    const rows=(byCase[c.case_no]||[]).sort((a,b)=>a.row_index-b.row_index);
+    const initiated=rows.find(r=>/initiated/i.test(r.action||''))||rows[0];
+    const paidRow=[...rows].reverse().find(r=>/paid/i.test(r.action||''));
+    const last=rows[rows.length-1];
+    return {
+      case_no:c.case_no, patient_name:c.patient_name, claim_no:c.claim_no,
+      claimed:initiated?parseAmt(initiated.amount):0,
+      paid:paidRow?parseAmt(paidRow.amount):null,
+      comment:last?(last.remarks||''):'', comment_by:last?(last.role_name||last.action||''):'',
+    };
+  });
+  $('sum-loading').style.display='none';$('sum-content').style.display='block';
+  renderSummary();
+}
+function renderSummary(){
+  const q=($('sum-q').value||'').trim().toLowerCase();
+  let rows=sumData||[];
+  if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')).toLowerCase().includes(q));
+  const ps=25, total=rows.length, from=(sumPage-1)*ps;
+  const page=rows.slice(from,from+ps);
+  const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');
+  const tb=$('sum-rows');
+  tb.innerHTML=page.length?page.map(r=>{
+    const cmt=esc(r.comment).slice(0,160);
+    return `<tr class="row" data-case="${esc(r.case_no)}">
+      <td class="link" style="white-space:nowrap">${esc(r.case_no)}</td>
+      <td>${esc(r.patient_name)}</td>
+      <td style="white-space:nowrap;font-weight:600">${inr(r.claimed)}</td>
+      <td style="white-space:nowrap;font-weight:600;color:${r.paid!=null?'var(--green-fg)':''}">${inr(r.paid)}</td>
+      <td style="color:var(--text-2)" title="${esc(r.comment)}">${cmt}${r.comment.length>160?'…':''}${r.comment_by?` <span style="color:var(--text-3)">— ${esc(r.comment_by)}</span>`:''}</td>
+    </tr>`;}).join(''):'<tr><td colspan="5" class="empty">No cases found</td></tr>';
+  tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.case));
+  const to=Math.min(total,sumPage*ps);
+  $('sum-info').textContent=total?`Showing ${from+1}–${to} of ${total.toLocaleString()} cases`:'No cases';
+  $('sum-cur').textContent=sumPage;$('sum-prev').disabled=sumPage<=1;$('sum-next').disabled=to>=total;
 }
 function resizeCharts(){setTimeout(()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});},40);}
 function setupDashTabs(){
@@ -417,7 +483,7 @@ async function loadDashboard(){
   let totClaimed=0,totPaid=0,totDed=0,pendVal=0,paidCount=0,tatSum=0,tatN=0,tatMax=0,oldVal=0,oldN=0,rejectedCount=0;
   const monMoney={},monTat={},monDed={},aging={'0–30 days':0,'31–60':0,'61–90':0,'90+ days':0},statusCount={};
   const monCount={},procCount={},tatDist={'0–30':0,'31–60':0,'61–90':0,'91–180':0,'180+':0},pendStatus={};
-  const cohRaised={},cohPaid={},cohPend={},cohLag={},monPaidCnt={},procStats={}; // by SUBMISSION month; monPaidCnt by PAYMENT month; procStats per procedure
+  const cohRaised={},cohPaid={},cohPend={},cohLag={},monPaidCnt={},procStats={},scatterPts=[]; // by SUBMISSION month; monPaidCnt by PAYMENT month; procStats per procedure; scatterPts=paid claims (amount vs days)
 
   cases.forEach(c=>{
     const rows=(byCase[c.case_no]||[]).sort((a,b)=>a.row_index-b.row_index);
@@ -435,7 +501,7 @@ async function loadDashboard(){
       if(procName){const ps=procStats[procName];ps.claimedSum+=claimed;ps.dedSum+=ded;if(initAt&&paidAt){ps.lagSum+=Math.max(0,Math.round((paidAt-initAt)/864e5));ps.lagN++;}}
       if(initAt){const sk=monKey(initAt);cohPaid[sk]=(cohPaid[sk]||0)+1;if(paidAt)cohLag[sk]=(cohLag[sk]||0)+Math.max(0,Math.round((paidAt-initAt)/864e5));}
       if(paidAt){const k=monKey(paidAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).p+=paid;const md=(monDed[k]=monDed[k]||{d:0,b:0});md.d+=ded;md.b+=claimed;monPaidCnt[k]=(monPaidCnt[k]||0)+1;}
-      if(initAt&&paidAt){const days=Math.round((paidAt-initAt)/864e5);if(days>=0){tatSum+=days;tatN++;if(days>tatMax)tatMax=days;const k=monKey(paidAt);const mt=(monTat[k]=monTat[k]||{s:0,n:0});mt.s+=days;mt.n++;
+      if(initAt&&paidAt){const days=Math.round((paidAt-initAt)/864e5);if(days>=0){tatSum+=days;tatN++;if(days>tatMax)tatMax=days;if(claimed>0)scatterPts.push({x:claimed,y:days});const k=monKey(paidAt);const mt=(monTat[k]=monTat[k]||{s:0,n:0});mt.s+=days;mt.n++;
         if(days<=30)tatDist['0–30']++;else if(days<=60)tatDist['31–60']++;else if(days<=90)tatDist['61–90']++;else if(days<=180)tatDist['91–180']++;else tatDist['180+']++;}}
     }else{
       pendVal+=claimed;const sd=parseStatusDate(c.status_date)||initAt;const age=sd?Math.round((now-sd)/864e5):0;
@@ -575,6 +641,17 @@ async function loadDashboard(){
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{const d=ctx.raw;return [d.label,`${d.count} claims · ~${d.x} days to pay · ${d.y}% deducted`];}}}},scales:{x:{title:{display:true,text:'Avg days to get paid →'},grid:{color:gridClr}},y:{title:{display:true,text:'Avg deduction %'},grid:{color:gridClr}}}}
   });
 
+  makeChart('c-scatter',{
+    type:'scatter',
+    data:{datasets:[{label:'Paid claims',data:scatterPts,backgroundColor:'rgba(16,185,129,.45)',borderColor:'rgba(5,150,105,.6)',pointRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`₹${Number(ctx.parsed.x).toLocaleString('en-IN')} claimed · ${ctx.parsed.y} days to pay`}}},scales:{x:{title:{display:true,text:'Claim amount (₹)'},grid:{color:gridClr},ticks:{callback:v=>inrShort(v)}},y:{title:{display:true,text:'Days to settle'},grid:{color:gridClr}}}}
+  });
+  makeChart('c-agingpolar',{
+    type:'polarArea',
+    data:{labels:Object.keys(aging),datasets:[{data:Object.values(aging),backgroundColor:['rgba(147,197,253,.7)','rgba(252,211,77,.7)','rgba(251,146,60,.7)','rgba(239,68,68,.75)']}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.label+': '+inrShort(ctx.parsed.r)}}},scales:{r:{ticks:{callback:v=>inrShort(v),font:{size:9},backdropColor:'transparent'},grid:{color:gridClr}}}}
+  });
+
   $('dash-loading').style.display='none';$('dash-content').style.display='block';
 }
 
@@ -664,6 +741,10 @@ $('status').addEventListener('change',()=>{page=1;loadCases();});
 $('pageSize').addEventListener('change',()=>{page=1;loadCases();});
 $('prev').onclick=()=>{if(page>1){page--;loadCases();}};
 $('next').onclick=()=>{page++;loadCases();};
+
+let ts;$('sum-q').addEventListener('input',()=>{clearTimeout(ts);ts=setTimeout(()=>{sumPage=1;renderSummary();},250);});
+$('sum-prev').onclick=()=>{if(sumPage>1){sumPage--;renderSummary();}};
+$('sum-next').onclick=()=>{sumPage++;renderSummary();};
 
 checkSession();
 </script>
