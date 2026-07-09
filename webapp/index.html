@@ -409,28 +409,20 @@ function switchView(v){
 let sumData=null, sumPage=1, fuPage=1;
 async function ensureSummaryData(){
   if(sumData)return;
-  const cases=await fetchAll('cases','case_no,patient_name,claim_no,claim_status,ip_registration_dt,status_date');
-  const wf=await fetchAll('claim_workflow','case_no,row_index,action,amount,remarks,role_name');
-  const byCase={};wf.forEach(r=>{(byCase[r.case_no]=byCase[r.case_no]||[]).push(r);});
-  sumData=cases.map(c=>{
-    const rows=(byCase[c.case_no]||[]).sort((a,b)=>a.row_index-b.row_index);
-    const initiated=rows.find(r=>/initiated/i.test(r.action||''))||rows[0];
-    const paidRow=[...rows].reverse().find(r=>/paid/i.test(r.action||''));
-    const last=rows[rows.length-1];
-    return {
-      case_no:c.case_no, patient_name:c.patient_name, claim_no:c.claim_no,
-      ip_reg:c.ip_registration_dt||'', status_date:c.status_date||'',
-      claimed:initiated?parseAmt(initiated.amount):0,
-      paid:paidRow?parseAmt(paidRow.amount):null,
-      comment:last?(last.remarks||''):'', comment_by:last?(last.role_name||last.action||''):'',
-    };
-  });
+  // reads PRECOMPUTED columns only — no workflow download, so this is fast even with thousands of cases
+  const cases=await fetchAll('cases','case_no,patient_name,claim_no,ip_registration_dt,status_date,claimed_amount,paid_amount,is_paid,latest_comment,latest_comment_by');
+  sumData=cases.map(c=>({
+    case_no:c.case_no, patient_name:c.patient_name, claim_no:c.claim_no,
+    ip_reg:c.ip_registration_dt||'', status_date:c.status_date||'',
+    claimed:c.claimed_amount, paid:c.paid_amount, is_paid:c.is_paid,
+    comment:c.latest_comment||'', comment_by:c.latest_comment_by||'',
+  }));
 }
 async function loadSummary(){await ensureSummaryData();$('sum-loading').style.display='none';$('sum-content').style.display='block';renderSummary();}
 async function loadFollowup(){await ensureSummaryData();$('fu-loading').style.display='none';$('fu-content').style.display='block';renderFollowup();}
 function renderFollowup(){
   const q=($('fu-q').value||'').trim().toLowerCase();
-  let rows=(sumData||[]).filter(r=>r.paid==null); // exclude payment-done cases
+  let rows=(sumData||[]).filter(r=>!r.is_paid); // exclude payment-done cases
   if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')).toLowerCase().includes(q));
   const ps=25, total=rows.length, from=(fuPage-1)*ps, pageRows=rows.slice(from,from+ps);
   const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');

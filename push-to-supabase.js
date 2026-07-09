@@ -8,6 +8,25 @@ const { db } = require('./db');
 const URL = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_KEY;
 
+// ---- precomputed per-case summary (so Summary/Follow-up read light columns, not the whole workflow) ----
+const MON = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
+function parseWfDate(str){const m=String(str||'').match(/(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);if(!m)return null;let h=+m[4];const ap=(m[6]||'').toUpperCase();if(ap==='PM'&&h<12)h+=12;if(ap==='AM'&&h===12)h=0;return new Date(+m[3],MON[m[2].toLowerCase()],+m[1],h,+m[5]);}
+function parseAmt(v){const n=parseInt(String(v==null?'':v).replace(/[^0-9]/g,''),10);return isNaN(n)?0:n;}
+function computeSummary(rows){
+  rows=[...rows].sort((a,b)=>a.row_index-b.row_index);
+  const initiated=rows.find(r=>/initiated/i.test(r.action||''))||rows[0];
+  const paidRow=[...rows].reverse().find(r=>/paid/i.test(r.action||''));
+  const last=rows[rows.length-1];
+  const claimed=initiated?parseAmt(initiated.amount):0;
+  const initAt=initiated?parseWfDate(initiated.date_time):null;
+  let paid=null,paidDate=null,settlement=null,deduction=null;
+  if(paidRow){paid=parseAmt(paidRow.amount);paidDate=paidRow.date_time||null;const pAt=parseWfDate(paidRow.date_time);if(claimed>0)deduction=Math.max(0,claimed-paid);if(initAt&&pAt){const d=Math.round((pAt-initAt)/864e5);if(d>=0)settlement=d;}}
+  return {
+    claimed_amount:claimed||null, paid_amount:paid, paid_date:paidDate, settlement_days:settlement, deduction, is_paid:!!paidRow,
+    latest_comment:last?(last.remarks||''):'', latest_comment_by:last?(last.role_name||last.action||''):'', latest_comment_date:last?(last.date_time||''):'',
+  };
+}
+
 async function chunkedUpsert(supabase, table, rows, conflictCol, chunk = 500) {
   for (let i = 0; i < rows.length; i += chunk) {
     const slice = rows.slice(i, i + chunk);
@@ -44,6 +63,12 @@ async function main() {
     workflow = db.prepare('SELECT case_no, row_index, date_time, role_name, remarks, action, amount FROM claim_workflow').all();
   }
   if (!cases.length) { console.log('Nothing new to push.'); return; }
+
+  // merge precomputed summary columns into each case from its workflow rows
+  const byCase = {};
+  workflow.forEach((w) => { (byCase[w.case_no] = byCase[w.case_no] || []).push(w); });
+  for (const c of cases) Object.assign(c, computeSummary(byCase[c.case_no] || []));
+
   console.log(`Pushing ${cases.length} cases and ${workflow.length} workflow rows to Supabase...`);
 
   // cases: primary key case_no
