@@ -110,7 +110,7 @@
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{text-align:left;padding:11px 14px;background:var(--bg);color:var(--text-2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap}
-  th[data-col]:hover{color:var(--primary)}
+  th[data-col]:hover,th[data-scol]:hover{color:var(--primary)}
   .sar{color:var(--primary);font-size:10px}
   td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
   tr:last-child td{border-bottom:none}
@@ -305,10 +305,17 @@
     <div id="sum-content" style="display:none">
       <div class="toolbar">
         <input type="text" id="sum-q" placeholder="Search case no, patient, claim no...">
+        <select id="sum-status"><option value="">All statuses</option></select>
       </div>
       <div class="card">
         <table style="table-layout:fixed">
-          <thead><tr><th style="width:19%">Case no</th><th style="width:18%">Patient</th><th style="width:13%">Total claimed</th><th style="width:13%">Total paid</th><th style="width:37%">Latest comment</th></tr></thead>
+          <thead><tr>
+            <th data-scol="case_no" style="width:19%;cursor:pointer">Case no<span class="sar"></span></th>
+            <th data-scol="patient" style="width:18%;cursor:pointer">Patient<span class="sar"></span></th>
+            <th data-scol="claimed" style="width:13%;cursor:pointer">Total claimed<span class="sar"></span></th>
+            <th data-scol="paid" style="width:13%;cursor:pointer">Total paid<span class="sar"></span></th>
+            <th style="width:37%">Latest comment</th>
+          </tr></thead>
           <tbody id="sum-rows"></tbody>
         </table>
         <div class="pager">
@@ -325,6 +332,7 @@
       <div class="toolbar">
         <input type="text" id="fu-q" placeholder="Search unpaid cases — case no, patient, claim no...">
         <select id="fu-status"><option value="">All statuses</option></select>
+        <button class="btn sm ghost" id="fu-export">⬇ Excel</button>
       </div>
       <div class="card">
         <table style="table-layout:fixed">
@@ -429,15 +437,23 @@ async function ensureSummaryData(){
     comment:c.latest_comment||'', comment_by:c.latest_comment_by||'',
   }));
 }
-async function loadSummary(){await ensureSummaryData();$('sum-loading').style.display='none';$('sum-content').style.display='block';renderSummary();}
+async function loadSummary(){await ensureSummaryData();setupSummary();$('sum-loading').style.display='none';$('sum-content').style.display='block';renderSummary();}
 let fuSort={col:'status_date',dir:'desc'}, fuSetup=false;
 function dmy(s){const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);if(!m)return 0;return new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5],+(m[6]||0)).getTime();}
-function fuSortRows(rows){const {col,dir}=fuSort,s=dir==='asc'?1:-1,field={case_no:'case_no',patient:'patient_name'}[col];
+function sortRows(rows,sort){const {col,dir}=sort,s=dir==='asc'?1:-1;
   return rows.slice().sort((a,b)=>{
-    if(col==='claimed'){const x=a.claimed==null?-1:a.claimed,y=b.claimed==null?-1:b.claimed;return (x-y)*s;}
+    if(col==='claimed'||col==='paid'){const x=a[col]==null?-1:a[col],y=b[col]==null?-1:b[col];return (x-y)*s;}
     if(col==='ip_reg'||col==='status_date')return (dmy(a[col])-dmy(b[col]))*s;
+    const field={case_no:'case_no',patient:'patient_name'}[col]||col;
     return String(a[field]||'').localeCompare(String(b[field]||''))*s;
   });}
+function fuFilteredRows(){
+  const q=($('fu-q').value||'').trim().toLowerCase(), st=$('fu-status').value;
+  let rows=(sumData||[]).filter(r=>!r.is_paid);
+  if(st)rows=rows.filter(r=>r.status===st);
+  if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')).toLowerCase().includes(q));
+  return sortRows(rows,fuSort);
+}
 function setupFollowup(){
   const sel=$('fu-status'),cur=sel.value;
   const statuses=[...new Set((sumData||[]).filter(r=>!r.is_paid).map(r=>r.status).filter(Boolean))].sort();
@@ -451,12 +467,7 @@ function setupFollowup(){
 }
 async function loadFollowup(){await ensureSummaryData();setupFollowup();$('fu-loading').style.display='none';$('fu-content').style.display='block';renderFollowup();}
 function renderFollowup(){
-  const q=($('fu-q').value||'').trim().toLowerCase();
-  const st=$('fu-status').value;
-  let rows=(sumData||[]).filter(r=>!r.is_paid); // exclude payment-done cases
-  if(st)rows=rows.filter(r=>r.status===st);
-  if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')).toLowerCase().includes(q));
-  rows=fuSortRows(rows);
+  const rows=fuFilteredRows();
   const ps=25, total=rows.length, from=(fuPage-1)*ps, pageRows=rows.slice(from,from+ps);
   const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');
   const tb=$('fu-rows');
@@ -476,10 +487,27 @@ function renderFollowup(){
   $('fu-cur').textContent=fuPage;$('fu-prev').disabled=fuPage<=1;$('fu-next').disabled=to>=total;
   document.querySelectorAll('#view-followup th[data-col]').forEach(th=>{const sar=th.querySelector('.sar');if(sar)sar.textContent=th.dataset.col===fuSort.col?(fuSort.dir==='asc'?' ▲':' ▼'):'';});
 }
-function renderSummary(){
-  const q=($('sum-q').value||'').trim().toLowerCase();
+let sumSort={col:'case_no',dir:'asc'}, sumSetup=false;
+function sumFilteredRows(){
+  const q=($('sum-q').value||'').trim().toLowerCase(), st=$('sum-status').value;
   let rows=sumData||[];
+  if(st)rows=rows.filter(r=>r.status===st);
   if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')).toLowerCase().includes(q));
+  return sortRows(rows,sumSort);
+}
+function setupSummary(){
+  const sel=$('sum-status'),cur=sel.value;
+  const statuses=[...new Set((sumData||[]).map(r=>r.status).filter(Boolean))].sort();
+  while(sel.options.length>1)sel.remove(1);
+  statuses.forEach(st=>{const o=document.createElement('option');o.value=st;o.textContent=st;sel.appendChild(o);});
+  sel.value=cur;
+  if(!sumSetup){
+    document.querySelectorAll('#view-summary th[data-scol]').forEach(th=>{th.onclick=()=>{const c=th.dataset.scol;if(sumSort.col===c)sumSort.dir=sumSort.dir==='asc'?'desc':'asc';else{sumSort.col=c;sumSort.dir=(c==='claimed'||c==='paid')?'desc':'asc';}sumPage=1;renderSummary();};});
+    sumSetup=true;
+  }
+}
+function renderSummary(){
+  const rows=sumFilteredRows();
   const ps=25, total=rows.length, from=(sumPage-1)*ps;
   const page=rows.slice(from,from+ps);
   const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');
@@ -497,6 +525,7 @@ function renderSummary(){
   const to=Math.min(total,sumPage*ps);
   $('sum-info').textContent=total?`Showing ${from+1}–${to} of ${total.toLocaleString()} cases`:'No cases';
   $('sum-cur').textContent=sumPage;$('sum-prev').disabled=sumPage<=1;$('sum-next').disabled=to>=total;
+  document.querySelectorAll('#view-summary th[data-scol]').forEach(th=>{const sar=th.querySelector('.sar');if(sar)sar.textContent=th.dataset.scol===sumSort.col?(sumSort.dir==='asc'?' ▲':' ▼'):'';});
 }
 function resizeCharts(){setTimeout(()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});},40);}
 function setupDashTabs(){
@@ -813,12 +842,18 @@ $('prev').onclick=()=>{if(page>1){page--;loadCases();}};
 $('next').onclick=()=>{page++;loadCases();};
 
 let ts;$('sum-q').addEventListener('input',()=>{clearTimeout(ts);ts=setTimeout(()=>{sumPage=1;renderSummary();},250);});
+$('sum-status').addEventListener('change',()=>{sumPage=1;renderSummary();});
 $('sum-prev').onclick=()=>{if(sumPage>1){sumPage--;renderSummary();}};
 $('sum-next').onclick=()=>{sumPage++;renderSummary();};
 let tf;$('fu-q').addEventListener('input',()=>{clearTimeout(tf);tf=setTimeout(()=>{fuPage=1;renderFollowup();},250);});
 $('fu-status').addEventListener('change',()=>{fuPage=1;renderFollowup();});
 $('fu-prev').onclick=()=>{if(fuPage>1){fuPage--;renderFollowup();}};
 $('fu-next').onclick=()=>{fuPage++;renderFollowup();};
+$('fu-export').onclick=()=>{
+  const rows=fuFilteredRows().map(r=>({'Case no':r.case_no,'Patient':r.patient_name,'Claim no':r.claim_no,'Status':r.status,'Total claimed':r.claimed,'IP registration':r.ip_reg,'Status date':r.status_date,'Latest comment':r.comment}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Unpaid follow-up');
+  XLSX.writeFile(wb,'viswachakra-followup-'+new Date().toISOString().slice(0,10)+'.xlsx');
+};
 
 checkSession();
 </script>
