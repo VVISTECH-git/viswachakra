@@ -112,6 +112,7 @@
   th{text-align:left;padding:11px 14px;background:var(--bg);color:var(--text-2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap}
   th[data-col]:hover,th[data-scol]:hover{color:var(--primary)}
   .sar{color:var(--primary);font-size:10px}
+  .dtin{padding:8px 10px;border:1px solid var(--border-strong);border-radius:9px;font-size:13px;background:var(--card);color:var(--text);font-family:inherit}
   td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
   tr:last-child td{border-bottom:none}
   tr.row{cursor:pointer}tr.row:hover{background:var(--primary-light)}
@@ -332,6 +333,9 @@
       <div class="toolbar">
         <input type="text" id="fu-q" placeholder="Search unpaid cases — case no, patient, claim no...">
         <select id="fu-status"><option value="">All statuses</option></select>
+        <select id="fu-month" title="Registration month"><option value="">Any registration month</option></select>
+        <input type="date" id="fu-from" class="dtin" title="Registered from">
+        <input type="date" id="fu-to" class="dtin" title="Registered to">
         <button class="btn sm ghost" id="fu-export">⬇ Excel</button>
       </div>
       <div class="card">
@@ -447,10 +451,16 @@ function sortRows(rows,sort){const {col,dir}=sort,s=dir==='asc'?1:-1;
     const field={case_no:'case_no',patient:'patient_name'}[col]||col;
     return String(a[field]||'').localeCompare(String(b[field]||''))*s;
   });}
+function ymOf(s){const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);return m?m[3]+'-'+m[2]:'';}
+function ymLabel(ym){const p=ym.split('-');return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1]+' '+p[0];}
 function fuFilteredRows(){
-  const q=($('fu-q').value||'').trim().toLowerCase(), st=$('fu-status').value;
+  const q=($('fu-q').value||'').trim().toLowerCase(), st=$('fu-status').value, mon=$('fu-month').value;
+  const from=$('fu-from').value?new Date($('fu-from').value+'T00:00:00').getTime():null;
+  const to=$('fu-to').value?new Date($('fu-to').value+'T23:59:59').getTime():null;
   let rows=(sumData||[]).filter(r=>!r.is_paid);
   if(st)rows=rows.filter(r=>r.status===st);
+  if(mon)rows=rows.filter(r=>ymOf(r.ip_reg)===mon);
+  if(from!=null||to!=null)rows=rows.filter(r=>{const t=dmy(r.ip_reg);if(!t)return false;if(from!=null&&t<from)return false;if(to!=null&&t>to)return false;return true;});
   if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')).toLowerCase().includes(q));
   return sortRows(rows,fuSort);
 }
@@ -460,6 +470,11 @@ function setupFollowup(){
   while(sel.options.length>1)sel.remove(1);
   statuses.forEach(st=>{const o=document.createElement('option');o.value=st;o.textContent=st;sel.appendChild(o);});
   sel.value=cur;
+  const msel=$('fu-month'),mcur=msel.value;
+  const months=[...new Set((sumData||[]).filter(r=>!r.is_paid).map(r=>ymOf(r.ip_reg)).filter(Boolean))].sort().reverse();
+  while(msel.options.length>1)msel.remove(1);
+  months.forEach(ym=>{const o=document.createElement('option');o.value=ym;o.textContent=ymLabel(ym);msel.appendChild(o);});
+  msel.value=mcur;
   if(!fuSetup){
     document.querySelectorAll('#view-followup th[data-col]').forEach(th=>{th.onclick=()=>{const c=th.dataset.col;if(fuSort.col===c)fuSort.dir=fuSort.dir==='asc'?'desc':'asc';else{fuSort.col=c;fuSort.dir=(c==='claimed'||c==='ip_reg'||c==='status_date')?'desc':'asc';}fuPage=1;renderFollowup();};});
     fuSetup=true;
@@ -847,6 +862,9 @@ $('sum-prev').onclick=()=>{if(sumPage>1){sumPage--;renderSummary();}};
 $('sum-next').onclick=()=>{sumPage++;renderSummary();};
 let tf;$('fu-q').addEventListener('input',()=>{clearTimeout(tf);tf=setTimeout(()=>{fuPage=1;renderFollowup();},250);});
 $('fu-status').addEventListener('change',()=>{fuPage=1;renderFollowup();});
+$('fu-month').addEventListener('change',()=>{$('fu-from').value='';$('fu-to').value='';fuPage=1;renderFollowup();});
+$('fu-from').addEventListener('change',()=>{$('fu-month').value='';fuPage=1;renderFollowup();});
+$('fu-to').addEventListener('change',()=>{$('fu-month').value='';fuPage=1;renderFollowup();});
 $('fu-prev').onclick=()=>{if(fuPage>1){fuPage--;renderFollowup();}};
 $('fu-next').onclick=()=>{fuPage++;renderFollowup();};
 $('fu-export').onclick=()=>{
