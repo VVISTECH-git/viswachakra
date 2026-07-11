@@ -287,12 +287,17 @@
     </div>
     <div class="toolbar">
       <input type="text" id="q" placeholder="Search case no, claim no, patient, card no, phone...">
+      <select id="cases-pay"><option value="">All cases</option><option value="unpaid">Unpaid only</option><option value="paid">Paid only</option></select>
       <select id="status"><option value="">All statuses</option></select>
+      <select id="cases-month" title="Registration month"><option value="">Any registration month</option></select>
+      <input type="date" id="cases-from" class="dtin" title="Registered from">
+      <input type="date" id="cases-to" class="dtin" title="Registered to">
       <select id="pageSize"><option>25</option><option>50</option><option>100</option></select>
+      <button class="btn sm ghost" id="cases-clear">Clear</button>
     </div>
     <div class="card">
       <table>
-        <thead><tr><th>Case no</th><th>Claim no</th><th>Patient</th><th>Claim status</th><th>Status date</th><th>Timeline</th></tr></thead>
+        <thead><tr><th>Case no</th><th>Claim no</th><th>Patient</th><th>Claim status</th><th>Status date</th><th>IP no</th></tr></thead>
         <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
       </table>
       <div class="pager">
@@ -312,6 +317,7 @@
         <select id="sum-month" title="Registration month"><option value="">Any registration month</option></select>
         <input type="date" id="sum-from" class="dtin" title="Registered from">
         <input type="date" id="sum-to" class="dtin" title="Registered to">
+        <button class="btn sm ghost" id="sum-clear">Clear</button>
         <button class="btn sm ghost" id="sum-export">⬇ Excel</button>
       </div>
       <div class="card">
@@ -401,6 +407,7 @@ function setupNav(){
 function switchView(v){
   ['dash','cases','summary'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
   if(v==='dash')resizeCharts();
+  if(v==='cases')loadCases();
   if(v==='summary')loadSummary();
 }
 
@@ -409,12 +416,13 @@ let sumData=null, sumPage=1;
 async function ensureSummaryData(){
   if(sumData)return;
   // reads PRECOMPUTED columns only — no workflow download, so this is fast even with thousands of cases
-  const cases=await fetchAll('cases','case_no,patient_name,claim_no,claim_status,ip_registration_dt,status_date,claimed_amount,paid_amount,is_paid,latest_comment,latest_comment_by');
+  const cases=await fetchAll('cases','case_no,patient_name,claim_no,claim_status,ip_registration_dt,status_date,claimed_amount,paid_amount,is_paid,latest_comment,latest_comment_by,ip_no,card_no,contact_no');
   sumData=cases.map(c=>({
     case_no:c.case_no, patient_name:c.patient_name, claim_no:c.claim_no, status:c.claim_status||'',
     ip_reg:c.ip_registration_dt||'', status_date:c.status_date||'',
     claimed:c.claimed_amount, paid:c.paid_amount, is_paid:c.is_paid,
     comment:c.latest_comment||'', comment_by:c.latest_comment_by||'',
+    ip_no:c.ip_no||'', card_no:c.card_no||'', contact_no:c.contact_no||'',
   }));
 }
 async function loadSummary(){await ensureSummaryData();setupSummary();$('sum-loading').style.display='none';$('sum-content').style.display='block';renderSummary();}
@@ -498,7 +506,7 @@ async function init(){
   if(started)return;started=true;
   setupNav();setupDashTabs();
   loadDashboard();                       // default landing view
-  loadStatuses();loadStats();loadCases(); // Cases tab, loads in background
+  loadStats();                           // KPI cards + last-sync pill (fast head counts)
 }
 
 // ---- helpers for analytics ----
@@ -718,34 +726,47 @@ async function loadStats(){
   const {data}=await sb.from('cases').select('last_synced').order('last_synced',{ascending:false}).limit(1);
   $('sync-pill').textContent=data&&data[0]?'Last sync '+new Date(data[0].last_synced).toLocaleString():'–';
 }
-async function loadStatuses(){
-  const {data}=await sb.from('cases').select('claim_status');
-  const counts={};(data||[]).forEach(r=>{if(r.claim_status)counts[r.claim_status]=(counts[r.claim_status]||0)+1;});
-  const sel=$('status');const cur=sel.value;
-  Object.entries(counts).sort((a,b)=>b[1]-a[1]).forEach(([s,n])=>{const o=document.createElement('option');o.value=s;o.textContent=`${s} (${n})`;sel.appendChild(o);});
+// Cases tab reads the SAME light client-side dataset as Summary, filtered independently.
+function casesFilteredRows(){
+  const q=($('q').value||'').trim().toLowerCase(), st=$('status').value, pay=$('cases-pay').value, mon=$('cases-month').value;
+  const from=$('cases-from').value?new Date($('cases-from').value+'T00:00:00').getTime():null;
+  const to=$('cases-to').value?new Date($('cases-to').value+'T23:59:59').getTime():null;
+  let rows=sumData||[];
+  if(pay==='unpaid')rows=rows.filter(r=>!r.is_paid);
+  else if(pay==='paid')rows=rows.filter(r=>r.is_paid);
+  if(st)rows=rows.filter(r=>r.status===st);
+  if(mon)rows=rows.filter(r=>ymOf(r.ip_reg)===mon);
+  if(from!=null||to!=null)rows=rows.filter(r=>{const t=dmy(r.ip_reg);if(!t)return false;if(from!=null&&t<from)return false;if(to!=null&&t>to)return false;return true;});
+  if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')+' '+(r.card_no||'')+' '+(r.contact_no||'')).toLowerCase().includes(q));
+  return sortRows(rows,{col:'status_date',dir:'desc'});
+}
+function setupCasesFilters(){
+  const sel=$('status'),cur=sel.value;
+  const statuses=[...new Set((sumData||[]).map(r=>r.status).filter(Boolean))].sort();
+  while(sel.options.length>1)sel.remove(1);
+  statuses.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
   sel.value=cur;
+  const msel=$('cases-month'),mcur=msel.value;
+  const months=[...new Set((sumData||[]).map(r=>ymOf(r.ip_reg)).filter(Boolean))].sort().reverse();
+  while(msel.options.length>1)msel.remove(1);
+  months.forEach(ym=>{const o=document.createElement('option');o.value=ym;o.textContent=ymLabel(ym);msel.appendChild(o);});
+  msel.value=mcur;
 }
-async function loadCases(){
-  const ps=parseInt($('pageSize').value,10);const from=(page-1)*ps;
-  let query=sb.from('cases').select('*',{count:'exact'});
-  const q=$('q').value.trim();
-  if(q)query=query.or(`case_no.ilike.%${q}%,claim_no.ilike.%${q}%,patient_name.ilike.%${q}%,card_no.ilike.%${q}%,contact_no.ilike.%${q}%`);
-  if($('status').value)query=query.eq('claim_status',$('status').value);
-  query=query.order('last_synced',{ascending:false}).range(from,from+ps-1);
-  const {data,count}=await query;
-  const tb=$('rows');tb.innerHTML='';
-  if(!data||!data.length){tb.innerHTML='<tr><td colspan="6" class="empty">No cases found</td></tr>';}
-  (data||[]).forEach(c=>{
-    const tr=document.createElement('tr');tr.className='row';
-    tr.innerHTML=`<td class="link">${esc(c.case_no)}</td><td>${esc(c.claim_no)||'–'}</td><td>${esc(c.patient_name)}</td>
-      <td><span class="${badge(c.claim_status)}" title="${esc(c.claim_status)}">${esc(c.claim_status)}</span></td>
-      <td style="white-space:nowrap">${esc(c.status_date)}</td><td>${esc(c.ip_no)||'–'}</td>`;
-    tr.onclick=()=>showDetail(c.case_no);tb.appendChild(tr);
-  });
-  const to=Math.min(count||0,page*ps);
-  $('pg-info').textContent=count?`Showing ${from+1}–${to} of ${count.toLocaleString()}`:'No cases';
-  $('pg-cur').textContent=page;$('prev').disabled=page<=1;$('next').disabled=to>=(count||0);
+function renderCases(){
+  const rows=casesFilteredRows();
+  const ps=parseInt($('pageSize').value,10)||25, total=rows.length, from=(page-1)*ps;
+  const pageRows=rows.slice(from,from+ps);
+  const tb=$('rows');
+  tb.innerHTML=pageRows.length?pageRows.map(c=>`<tr class="row" data-case="${esc(c.case_no)}">
+    <td class="link">${esc(c.case_no)}</td><td>${esc(c.claim_no)||'–'}</td><td>${esc(c.patient_name)}</td>
+    <td><span class="${badge(c.status)}" title="${esc(c.status)}">${esc(c.status)||'–'}</span></td>
+    <td style="white-space:nowrap">${esc(c.status_date)||'–'}</td><td style="white-space:nowrap">${esc(c.ip_no)||'–'}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">No cases found</td></tr>';
+  tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.case));
+  const to=Math.min(total,page*ps);
+  $('pg-info').textContent=total?`Showing ${from+1}–${to} of ${total.toLocaleString()}`:'No cases';
+  $('pg-cur').textContent=page;$('prev').disabled=page<=1;$('next').disabled=to>=total;
 }
+async function loadCases(){await ensureSummaryData();setupCasesFilters();renderCases();}
 function fmtRemarks(t){
   if(/\(\d+\)\s*:/.test(t)){const parts=t.split(/\(\d+\)\s*:\s*/).map(p=>p.trim()).filter(Boolean);
     return'<ol>'+parts.map(p=>'<li>'+esc(p).replace(/\?\s*YES\b/g,'? <span class="yes">YES</span>').replace(/\?\s*NO\b/g,'? <span class="no">NO</span>')+'</li>').join('')+'</ol>';}
@@ -789,11 +810,16 @@ $('export-btn').addEventListener('click',async()=>{
   $('export-btn').textContent='⬇ Excel';
 });
 
-let t;$('q').addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{page=1;loadCases();},300);});
-$('status').addEventListener('change',()=>{page=1;loadCases();});
-$('pageSize').addEventListener('change',()=>{page=1;loadCases();});
-$('prev').onclick=()=>{if(page>1){page--;loadCases();}};
-$('next').onclick=()=>{page++;loadCases();};
+let t;$('q').addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{page=1;renderCases();},250);});
+$('cases-pay').addEventListener('change',()=>{page=1;renderCases();});
+$('status').addEventListener('change',()=>{page=1;renderCases();});
+$('cases-month').addEventListener('change',()=>{$('cases-from').value='';$('cases-to').value='';page=1;renderCases();});
+$('cases-from').addEventListener('change',()=>{$('cases-month').value='';page=1;renderCases();});
+$('cases-to').addEventListener('change',()=>{$('cases-month').value='';page=1;renderCases();});
+$('pageSize').addEventListener('change',()=>{page=1;renderCases();});
+$('cases-clear').onclick=()=>{$('q').value='';$('cases-pay').value='';$('status').value='';$('cases-month').value='';$('cases-from').value='';$('cases-to').value='';page=1;renderCases();};
+$('prev').onclick=()=>{if(page>1){page--;renderCases();}};
+$('next').onclick=()=>{page++;renderCases();};
 
 let ts;$('sum-q').addEventListener('input',()=>{clearTimeout(ts);ts=setTimeout(()=>{sumPage=1;renderSummary();},250);});
 $('sum-pay').addEventListener('change',()=>{sumPage=1;renderSummary();});
@@ -806,6 +832,7 @@ $('sum-export').onclick=()=>{
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Cases');
   XLSX.writeFile(wb,'viswachakra-summary-'+new Date().toISOString().slice(0,10)+'.xlsx');
 };
+$('sum-clear').onclick=()=>{$('sum-q').value='';$('sum-pay').value='';$('sum-status').value='';$('sum-month').value='';$('sum-from').value='';$('sum-to').value='';sumPage=1;renderSummary();};
 $('sum-prev').onclick=()=>{if(sumPage>1){sumPage--;renderSummary();}};
 $('sum-next').onclick=()=>{sumPage++;renderSummary();};
 
