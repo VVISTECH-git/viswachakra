@@ -187,7 +187,6 @@
     <nav class="nav">
       <button id="nav-dash" class="on">Dashboard</button>
       <button id="nav-cases">Cases</button>
-      <button id="nav-summary">Summary</button>
     </nav>
     <div class="hright">
       <span class="pill" id="sync-pill">–</span>
@@ -294,11 +293,21 @@
       <input type="date" id="cases-to" class="dtin" title="Registered to">
       <select id="pageSize"><option>25</option><option>50</option><option>100</option></select>
       <button class="btn sm ghost" id="cases-clear">Clear</button>
+      <button class="btn sm ghost" id="cases-export">⬇ Excel</button>
     </div>
     <div class="card">
-      <table>
-        <thead><tr><th>Case no</th><th>Claim no</th><th>Patient</th><th>Claim status</th><th>Status date</th><th>IP no</th></tr></thead>
-        <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+      <table style="table-layout:fixed">
+        <thead><tr>
+          <th data-scol="case_no" style="width:15%;cursor:pointer">Case no<span class="sar"></span></th>
+          <th data-scol="claim_no" style="width:13%;cursor:pointer">Claim no<span class="sar"></span></th>
+          <th data-scol="patient" style="width:14%;cursor:pointer">Patient<span class="sar"></span></th>
+          <th data-scol="status" style="width:14%;cursor:pointer">Claim status<span class="sar"></span></th>
+          <th data-scol="claimed" style="width:11%;cursor:pointer">Claimed<span class="sar"></span></th>
+          <th data-scol="paid" style="width:11%;cursor:pointer">Paid<span class="sar"></span></th>
+          <th data-scol="ip_reg" style="width:11%;cursor:pointer">IP registration<span class="sar"></span></th>
+          <th data-scol="status_date" style="width:11%;cursor:pointer">Status date<span class="sar"></span></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
       </table>
       <div class="pager">
         <span id="pg-info">–</span><span class="grow"></span>
@@ -307,39 +316,6 @@
     </div>
   </main>
 
-  <main id="view-summary" style="display:none">
-    <div id="sum-loading" class="empty" style="padding:60px">Loading claim summary…</div>
-    <div id="sum-content" style="display:none">
-      <div class="toolbar">
-        <input type="text" id="sum-q" placeholder="Search case no, patient, claim no...">
-        <select id="sum-pay"><option value="">All cases</option><option value="unpaid">Unpaid only</option><option value="paid">Paid only</option></select>
-        <select id="sum-status"><option value="">All statuses</option></select>
-        <select id="sum-month" title="Registration month"><option value="">Any registration month</option></select>
-        <input type="date" id="sum-from" class="dtin" title="Registered from">
-        <input type="date" id="sum-to" class="dtin" title="Registered to">
-        <button class="btn sm ghost" id="sum-clear">Clear</button>
-        <button class="btn sm ghost" id="sum-export">⬇ Excel</button>
-      </div>
-      <div class="card">
-        <table style="table-layout:fixed">
-          <thead><tr>
-            <th data-scol="case_no" style="width:15%;cursor:pointer">Case no<span class="sar"></span></th>
-            <th data-scol="patient" style="width:15%;cursor:pointer">Patient<span class="sar"></span></th>
-            <th data-scol="claimed" style="width:11%;cursor:pointer">Total claimed<span class="sar"></span></th>
-            <th data-scol="paid" style="width:11%;cursor:pointer">Total paid<span class="sar"></span></th>
-            <th data-scol="ip_reg" style="width:13%;cursor:pointer">IP registration<span class="sar"></span></th>
-            <th data-scol="status_date" style="width:13%;cursor:pointer">Status date<span class="sar"></span></th>
-            <th style="width:22%">Latest comment</th>
-          </tr></thead>
-          <tbody id="sum-rows"></tbody>
-        </table>
-        <div class="pager">
-          <span id="sum-info">–</span><span class="grow"></span>
-          <button class="btn sm ghost" id="sum-prev">‹ Prev</button><span id="sum-cur">1</span><button class="btn sm ghost" id="sum-next">Next ›</button>
-        </div>
-      </div>
-    </div>
-  </main>
 
 </div>
 
@@ -402,17 +378,15 @@ function showApp(){$('login').style.display='none';$('app').style.display='block
 function setupNav(){
   $('nav-dash').onclick=()=>switchView('dash');
   $('nav-cases').onclick=()=>switchView('cases');
-  $('nav-summary').onclick=()=>switchView('summary');
 }
 function switchView(v){
-  ['dash','cases','summary'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
+  ['dash','cases'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
   if(v==='dash')resizeCharts();
   if(v==='cases')loadCases();
-  if(v==='summary')loadSummary();
 }
 
-// ---- Summary tab: per-case claimed / paid / latest comment ----
-let sumData=null, sumPage=1;
+// ---- shared client-side dataset: precomputed per-case claimed / paid / comment ----
+let sumData=null;
 async function ensureSummaryData(){
   if(sumData)return;
   // reads PRECOMPUTED columns only — no workflow download, so this is fast even with thousands of cases
@@ -425,7 +399,6 @@ async function ensureSummaryData(){
     ip_no:c.ip_no||'', card_no:c.card_no||'', contact_no:c.contact_no||'',
   }));
 }
-async function loadSummary(){await ensureSummaryData();setupSummary();$('sum-loading').style.display='none';$('sum-content').style.display='block';renderSummary();}
 function dmy(s){const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);if(!m)return 0;return new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5],+(m[6]||0)).getTime();}
 function sortRows(rows,sort){const {col,dir}=sort,s=dir==='asc'?1:-1;
   return rows.slice().sort((a,b)=>{
@@ -436,59 +409,6 @@ function sortRows(rows,sort){const {col,dir}=sort,s=dir==='asc'?1:-1;
   });}
 function ymOf(s){const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);return m?m[3]+'-'+m[2]:'';}
 function ymLabel(ym){const p=ym.split('-');return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1]+' '+p[0];}
-let sumSort={col:'status_date',dir:'desc'}, sumSetup=false;
-function sumFilteredRows(){
-  const q=($('sum-q').value||'').trim().toLowerCase(), st=$('sum-status').value, pay=$('sum-pay').value, mon=$('sum-month').value;
-  const from=$('sum-from').value?new Date($('sum-from').value+'T00:00:00').getTime():null;
-  const to=$('sum-to').value?new Date($('sum-to').value+'T23:59:59').getTime():null;
-  let rows=sumData||[];
-  if(pay==='unpaid')rows=rows.filter(r=>!r.is_paid);
-  else if(pay==='paid')rows=rows.filter(r=>r.is_paid);
-  if(st)rows=rows.filter(r=>r.status===st);
-  if(mon)rows=rows.filter(r=>ymOf(r.ip_reg)===mon);
-  if(from!=null||to!=null)rows=rows.filter(r=>{const t=dmy(r.ip_reg);if(!t)return false;if(from!=null&&t<from)return false;if(to!=null&&t>to)return false;return true;});
-  if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')).toLowerCase().includes(q));
-  return sortRows(rows,sumSort);
-}
-function setupSummary(){
-  const sel=$('sum-status'),cur=sel.value;
-  const statuses=[...new Set((sumData||[]).map(r=>r.status).filter(Boolean))].sort();
-  while(sel.options.length>1)sel.remove(1);
-  statuses.forEach(st=>{const o=document.createElement('option');o.value=st;o.textContent=st;sel.appendChild(o);});
-  sel.value=cur;
-  const msel=$('sum-month'),mcur=msel.value;
-  const months=[...new Set((sumData||[]).map(r=>ymOf(r.ip_reg)).filter(Boolean))].sort().reverse();
-  while(msel.options.length>1)msel.remove(1);
-  months.forEach(ym=>{const o=document.createElement('option');o.value=ym;o.textContent=ymLabel(ym);msel.appendChild(o);});
-  msel.value=mcur;
-  if(!sumSetup){
-    document.querySelectorAll('#view-summary th[data-scol]').forEach(th=>{th.onclick=()=>{const c=th.dataset.scol;if(sumSort.col===c)sumSort.dir=sumSort.dir==='asc'?'desc':'asc';else{sumSort.col=c;sumSort.dir=(c==='claimed'||c==='paid'||c==='ip_reg'||c==='status_date')?'desc':'asc';}sumPage=1;renderSummary();};});
-    sumSetup=true;
-  }
-}
-function renderSummary(){
-  const rows=sumFilteredRows();
-  const ps=25, total=rows.length, from=(sumPage-1)*ps;
-  const page=rows.slice(from,from+ps);
-  const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');
-  const tb=$('sum-rows');
-  tb.innerHTML=page.length?page.map(r=>{
-    const cmt=esc(r.comment).slice(0,120);
-    return `<tr class="row" data-case="${esc(r.case_no)}">
-      <td class="link" style="white-space:nowrap">${esc(r.case_no)}</td>
-      <td>${esc(r.patient_name)}</td>
-      <td style="white-space:nowrap;font-weight:600">${inr(r.claimed)}</td>
-      <td style="white-space:nowrap;font-weight:600;color:${r.paid!=null?'var(--green-fg)':''}">${inr(r.paid)}</td>
-      <td class="mono" style="white-space:nowrap">${esc(r.ip_reg)||'–'}</td>
-      <td class="mono" style="white-space:nowrap">${esc(r.status_date)||'–'}</td>
-      <td style="color:var(--text-2)" title="${esc(r.comment)}">${cmt}${r.comment.length>120?'…':''}</td>
-    </tr>`;}).join(''):'<tr><td colspan="7" class="empty">No cases found</td></tr>';
-  tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.case));
-  const to=Math.min(total,sumPage*ps);
-  $('sum-info').textContent=total?`Showing ${from+1}–${to} of ${total.toLocaleString()} cases`:'No cases';
-  $('sum-cur').textContent=sumPage;$('sum-prev').disabled=sumPage<=1;$('sum-next').disabled=to>=total;
-  document.querySelectorAll('#view-summary th[data-scol]').forEach(th=>{const sar=th.querySelector('.sar');if(sar)sar.textContent=th.dataset.scol===sumSort.col?(sumSort.dir==='asc'?' ▲':' ▼'):'';});
-}
 function resizeCharts(){setTimeout(()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});},40);}
 function setupDashTabs(){
   document.querySelectorAll('.dtabs button').forEach(b=>{
@@ -726,7 +646,8 @@ async function loadStats(){
   const {data}=await sb.from('cases').select('last_synced').order('last_synced',{ascending:false}).limit(1);
   $('sync-pill').textContent=data&&data[0]?'Last sync '+new Date(data[0].last_synced).toLocaleString():'–';
 }
-// Cases tab reads the SAME light client-side dataset as Summary, filtered independently.
+// Cases tab: the single worklist — filter, sort, paginate the shared dataset.
+let casesSort={col:'status_date',dir:'desc'}, casesSetup=false;
 function casesFilteredRows(){
   const q=($('q').value||'').trim().toLowerCase(), st=$('status').value, pay=$('cases-pay').value, mon=$('cases-month').value;
   const from=$('cases-from').value?new Date($('cases-from').value+'T00:00:00').getTime():null;
@@ -738,7 +659,7 @@ function casesFilteredRows(){
   if(mon)rows=rows.filter(r=>ymOf(r.ip_reg)===mon);
   if(from!=null||to!=null)rows=rows.filter(r=>{const t=dmy(r.ip_reg);if(!t)return false;if(from!=null&&t<from)return false;if(to!=null&&t>to)return false;return true;});
   if(q)rows=rows.filter(r=>((r.case_no||'')+' '+(r.patient_name||'')+' '+(r.claim_no||'')+' '+(r.card_no||'')+' '+(r.contact_no||'')).toLowerCase().includes(q));
-  return sortRows(rows,{col:'status_date',dir:'desc'});
+  return sortRows(rows,casesSort);
 }
 function setupCasesFilters(){
   const sel=$('status'),cur=sel.value;
@@ -751,20 +672,32 @@ function setupCasesFilters(){
   while(msel.options.length>1)msel.remove(1);
   months.forEach(ym=>{const o=document.createElement('option');o.value=ym;o.textContent=ymLabel(ym);msel.appendChild(o);});
   msel.value=mcur;
+  if(!casesSetup){
+    document.querySelectorAll('#view-cases th[data-scol]').forEach(th=>{th.onclick=()=>{const c=th.dataset.scol;if(casesSort.col===c)casesSort.dir=casesSort.dir==='asc'?'desc':'asc';else{casesSort.col=c;casesSort.dir=(c==='claimed'||c==='paid'||c==='ip_reg'||c==='status_date')?'desc':'asc';}page=1;renderCases();};});
+    casesSetup=true;
+  }
 }
 function renderCases(){
   const rows=casesFilteredRows();
   const ps=parseInt($('pageSize').value,10)||25, total=rows.length, from=(page-1)*ps;
   const pageRows=rows.slice(from,from+ps);
+  const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');
+  const dOnly=s=>{const m=String(s||'').match(/\d{2}\/\d{2}\/\d{4}/);return m?m[0]:'';};
   const tb=$('rows');
   tb.innerHTML=pageRows.length?pageRows.map(c=>`<tr class="row" data-case="${esc(c.case_no)}">
-    <td class="link">${esc(c.case_no)}</td><td>${esc(c.claim_no)||'–'}</td><td>${esc(c.patient_name)}</td>
-    <td><span class="${badge(c.status)}" title="${esc(c.status)}">${esc(c.status)||'–'}</span></td>
-    <td style="white-space:nowrap">${esc(c.status_date)||'–'}</td><td style="white-space:nowrap">${esc(c.ip_no)||'–'}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">No cases found</td></tr>';
+    <td class="link" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.case_no)}</td>
+    <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(c.claim_no)}">${esc(c.claim_no)||'–'}</td>
+    <td style="overflow:hidden;text-overflow:ellipsis" title="${esc(c.patient_name)}">${esc(c.patient_name)}</td>
+    <td style="overflow:hidden"><span class="${badge(c.status)}" title="${esc(c.status)}">${esc(c.status)||'–'}</span></td>
+    <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${inr(c.claimed)}</td>
+    <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:${c.paid!=null?'var(--green-fg)':''}">${inr(c.paid)}</td>
+    <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(c.ip_reg)}">${esc(dOnly(c.ip_reg))||'–'}</td>
+    <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(c.status_date)}">${esc(dOnly(c.status_date))||'–'}</td></tr>`).join(''):'<tr><td colspan="8" class="empty">No cases found</td></tr>';
   tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.case));
   const to=Math.min(total,page*ps);
   $('pg-info').textContent=total?`Showing ${from+1}–${to} of ${total.toLocaleString()}`:'No cases';
   $('pg-cur').textContent=page;$('prev').disabled=page<=1;$('next').disabled=to>=total;
+  document.querySelectorAll('#view-cases th[data-scol]').forEach(th=>{const sar=th.querySelector('.sar');if(sar)sar.textContent=th.dataset.scol===casesSort.col?(casesSort.dir==='asc'?' ▲':' ▼'):'';});
 }
 async function loadCases(){await ensureSummaryData();setupCasesFilters();renderCases();}
 function fmtRemarks(t){
@@ -818,23 +751,13 @@ $('cases-from').addEventListener('change',()=>{$('cases-month').value='';page=1;
 $('cases-to').addEventListener('change',()=>{$('cases-month').value='';page=1;renderCases();});
 $('pageSize').addEventListener('change',()=>{page=1;renderCases();});
 $('cases-clear').onclick=()=>{$('q').value='';$('cases-pay').value='';$('status').value='';$('cases-month').value='';$('cases-from').value='';$('cases-to').value='';page=1;renderCases();};
+$('cases-export').onclick=()=>{
+  const rows=casesFilteredRows().map(r=>({'Case no':r.case_no,'Claim no':r.claim_no,'Patient':r.patient_name,'Claim status':r.status,'Claimed':r.claimed,'Paid':r.paid,'IP registration':r.ip_reg,'Status date':r.status_date,'Latest comment':r.comment}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Cases');
+  XLSX.writeFile(wb,'viswachakra-cases-'+new Date().toISOString().slice(0,10)+'.xlsx');
+};
 $('prev').onclick=()=>{if(page>1){page--;renderCases();}};
 $('next').onclick=()=>{page++;renderCases();};
-
-let ts;$('sum-q').addEventListener('input',()=>{clearTimeout(ts);ts=setTimeout(()=>{sumPage=1;renderSummary();},250);});
-$('sum-pay').addEventListener('change',()=>{sumPage=1;renderSummary();});
-$('sum-status').addEventListener('change',()=>{sumPage=1;renderSummary();});
-$('sum-month').addEventListener('change',()=>{$('sum-from').value='';$('sum-to').value='';sumPage=1;renderSummary();});
-$('sum-from').addEventListener('change',()=>{$('sum-month').value='';sumPage=1;renderSummary();});
-$('sum-to').addEventListener('change',()=>{$('sum-month').value='';sumPage=1;renderSummary();});
-$('sum-export').onclick=()=>{
-  const rows=sumFilteredRows().map(r=>({'Case no':r.case_no,'Patient':r.patient_name,'Claim no':r.claim_no,'Status':r.status,'Total claimed':r.claimed,'Total paid':r.paid,'IP registration':r.ip_reg,'Status date':r.status_date,'Latest comment':r.comment}));
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Cases');
-  XLSX.writeFile(wb,'viswachakra-summary-'+new Date().toISOString().slice(0,10)+'.xlsx');
-};
-$('sum-clear').onclick=()=>{$('sum-q').value='';$('sum-pay').value='';$('sum-status').value='';$('sum-month').value='';$('sum-from').value='';$('sum-to').value='';sumPage=1;renderSummary();};
-$('sum-prev').onclick=()=>{if(sumPage>1){sumPage--;renderSummary();}};
-$('sum-next').onclick=()=>{sumPage++;renderSummary();};
 
 checkSession();
 </script>
