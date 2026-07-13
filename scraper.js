@@ -68,10 +68,26 @@ async function login(context, log) {
 
 async function gotoCasesSearch(page, log) {
   log('Opening Cases Search...');
-  await page.goto(BASE + '/authUserViewAction.do?actionVal=CasesSearchView&PersistFlag=N&procType=IP', {
-    waitUntil: 'domcontentloaded', timeout: 60000,
-  });
-  await page.waitForTimeout(2000);
+  const url = BASE + '/authUserViewAction.do?actionVal=CasesSearchView&PersistFlag=N&procType=IP';
+  let lastErr;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.waitForTimeout(2000);
+      return;
+    } catch (e) {
+      lastErr = e;
+      const msg = String((e && e.message) || e).split('\n')[0];
+      // transient network blips (ERR_NETWORK_CHANGED, connection reset, timeouts) — wait and retry
+      if (/ERR_NETWORK|ERR_CONNECTION|ERR_TIMED_OUT|net::|Timeout|NS_ERROR/i.test(msg) && attempt < 5) {
+        log(`  network hiccup opening search (attempt ${attempt}: ${msg}); retrying in ${attempt * 3}s...`);
+        await page.waitForTimeout(attempt * 3000);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
 }
 
 async function setStatusDateRange(page, fromStr, toStr, log) {
@@ -110,14 +126,29 @@ async function setStatusDateRange(page, fromStr, toStr, log) {
 
 async function runSearch(page, log) {
   log('Clicking Search...');
-  const clicked = await page.evaluate(() => {
-    if (typeof fnSearch === 'function') { fnSearch(); return { ok: true }; }
-    const img = Array.from(document.querySelectorAll('img[src*="btn_search"]'))
-      .find((el) => el.offsetWidth || el.offsetHeight);
-    if (img) { img.click(); return { ok: true }; }
-    return { ok: false };
-  });
-  if (!clicked.ok) throw new Error('Search button (fnSearch / btn_search.gif) not found on page.');
+  // fnSearch() calls the portal's fnCompareDates() internally; on a fresh page load
+  // those scripts may not be defined yet ("fnCompareDates is not defined"). Wait for
+  // both to exist before invoking, and retry the specific race a few times.
+  let clicked = { ok: false };
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await page.waitForFunction(
+      () => typeof fnSearch === 'function' && typeof fnCompareDates === 'function',
+      { timeout: 20000 },
+    ).catch(() => {});
+    clicked = await page.evaluate(() => {
+      try {
+        if (typeof fnSearch === 'function' && typeof fnCompareDates === 'function') { fnSearch(); return { ok: true }; }
+        const img = Array.from(document.querySelectorAll('img[src*="btn_search"]'))
+          .find((el) => el.offsetWidth || el.offsetHeight);
+        if (img) { img.click(); return { ok: true }; }
+        return { ok: false, reason: 'search fns/button not ready' };
+      } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+    });
+    if (clicked.ok) break;
+    log(`  search not ready (attempt ${attempt}: ${clicked.reason}); waiting...`);
+    await page.waitForTimeout(3000);
+  }
+  if (!clicked.ok) throw new Error('Search button (fnSearch / btn_search.gif) not ready: ' + (clicked.reason || 'unknown'));
 
   log('Waiting for results to load...');
   const deadline = Date.now() + 240000;
