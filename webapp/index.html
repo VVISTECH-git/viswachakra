@@ -124,6 +124,12 @@
   .pager{display:flex;align-items:center;gap:12px;padding:12px 14px;font-size:12.5px;color:var(--text-2);border-top:1px solid var(--border)}
   .pager .grow{flex:1}
   .empty{text-align:center;color:var(--text-3);padding:40px}
+  .cmscroll{overflow-x:auto}
+  table.cmtab{border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+  .cmtab th{text-align:left;padding:9px 10px;background:var(--bg);color:var(--text-2);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cmtab th[data-cmcol]:hover{color:var(--primary)}
+  .cmtab td{padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cmtab tr:last-child td{border-bottom:none}
   #overlay{position:fixed;inset:0;background:rgba(10,12,24,.45);z-index:40;display:none}
   #panel{position:fixed;top:0;right:-760px;width:720px;max-width:96vw;height:100vh;background:var(--card);z-index:50;box-shadow:-16px 0 50px rgba(10,12,24,.25);transition:right .25s;display:flex;flex-direction:column}
   #panel.open{right:0}
@@ -187,6 +193,7 @@
     <nav class="nav">
       <button id="nav-dash" class="on">Dashboard</button>
       <button id="nav-cases">Cases</button>
+      <button id="nav-claims">Claims Master</button>
     </nav>
     <div class="hright">
       <span class="pill" id="sync-pill">–</span>
@@ -316,6 +323,30 @@
     </div>
   </main>
 
+  <main id="view-claims" style="display:none">
+    <div id="cm-loading" class="empty" style="padding:60px">Building the claims register…</div>
+    <div id="cm-content" style="display:none">
+      <div class="toolbar">
+        <input type="text" id="cm-q" placeholder="Search case, patient, claim, card, phone...">
+        <select id="cm-pay"><option value="">All cases</option><option value="unpaid">Unpaid only</option><option value="paid">Paid only</option></select>
+        <select id="cm-status"><option value="">All statuses</option></select>
+        <select id="cm-month" title="Registration month"><option value="">Any registration month</option></select>
+        <input type="date" id="cm-from" class="dtin" title="Registered from">
+        <input type="date" id="cm-to" class="dtin" title="Registered to">
+        <button class="btn sm ghost" id="cm-clear">Clear</button>
+        <button class="btn sm ghost" id="cm-export">⬇ Excel</button>
+      </div>
+      <div class="card">
+        <div class="cmscroll">
+          <table id="cm-table" class="cmtab"><thead id="cm-head"></thead><tbody id="cm-rows"></tbody></table>
+        </div>
+        <div class="pager">
+          <span id="cm-info">–</span><span class="grow"></span>
+          <button class="btn sm ghost" id="cm-prev">‹ Prev</button><span id="cm-cur">1</span><button class="btn sm ghost" id="cm-next">Next ›</button>
+        </div>
+      </div>
+    </div>
+  </main>
 
 </div>
 
@@ -378,11 +409,13 @@ function showApp(){$('login').style.display='none';$('app').style.display='block
 function setupNav(){
   $('nav-dash').onclick=()=>switchView('dash');
   $('nav-cases').onclick=()=>switchView('cases');
+  $('nav-claims').onclick=()=>switchView('claims');
 }
 function switchView(v){
-  ['dash','cases'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
+  ['dash','cases','claims'].forEach(x=>{$('nav-'+x).classList.toggle('on',v===x);$('view-'+x).style.display=v===x?'block':'none';});
   if(v==='dash')resizeCharts();
   if(v==='cases')loadCases();
+  if(v==='claims')loadClaims();
 }
 
 // ---- shared client-side dataset: precomputed per-case claimed / paid / comment ----
@@ -700,6 +733,123 @@ function renderCases(){
   document.querySelectorAll('#view-cases th[data-scol]').forEach(th=>{const sar=th.querySelector('.sar');if(sar)sar.textContent=th.dataset.scol===casesSort.col?(casesSort.dir==='asc'?' ▲':' ▼'):'';});
 }
 async function loadCases(){await ensureSummaryData();setupCasesFilters();renderCases();}
+
+// ---- Claims Master tab: 21-column register, lifecycle derived client-side from the workflow ----
+const CM_COLS=[
+  {key:'claim_id',label:'Claim ID',w:170},
+  {key:'uhid',label:'UHID',w:130},
+  {key:'patient',label:'Patient Name',w:160},
+  {key:'insurance',label:'Insurance/TPA',w:110},
+  {key:'scheme',label:'Scheme',w:90},
+  {key:'surgery_date',label:'Surgery Date',type:'date',w:105},
+  {key:'procedure',label:'Procedure',w:220},
+  {key:'claim_amount',label:'Claim Amount',type:'num',w:110},
+  {key:'submission_date',label:'Submission Date',type:'date',w:120},
+  {key:'current_status',label:'Current Status',w:190},
+  {key:'query_raised',label:'Query Raised?',w:100},
+  {key:'query_date',label:'Query Date',type:'date',w:105},
+  {key:'reply_date',label:'Reply Date',type:'date',w:105},
+  {key:'approval_date',label:'Approval Date',type:'date',w:110},
+  {key:'amount_approved',label:'Amount Approved',type:'num',w:125},
+  {key:'payment_date',label:'Payment Date',type:'date',w:110},
+  {key:'amount_received',label:'Amount Received',type:'num',w:125},
+  {key:'outstanding',label:'Outstanding',type:'num',w:110},
+  {key:'days_pending',label:'Days Pending',type:'num',w:100},
+  {key:'follow_up',label:'Follow-up Needed',w:120},
+  {key:'remarks',label:'Remarks',w:260},
+];
+let cmData=null,cmPage=1,cmSort={col:'submission_date',dir:'desc'},cmSetup=false;
+function fmtD(d){if(!d)return null;const p=n=>String(n).padStart(2,'0');return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear();}
+function parseCaseDate(s){const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);if(!m)return null;return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0));}
+function deriveClaim(c,rows){
+  rows=[...rows].sort((a,b)=>a.row_index-b.row_index);
+  const initiated=rows.find(r=>/initiated/i.test(r.action||''))||rows[0];
+  const submissionAt=initiated?parseWfDate(initiated.date_time):null;
+  const claimAmt=c.claimed_amount!=null?c.claimed_amount:(initiated?parseAmt(initiated.amount):0);
+  const approvalRow=[...rows].reverse().find(r=>/recommend(ed)? for approval|recommend approval/i.test(r.action||''));
+  const approvalAt=approvalRow?parseWfDate(approvalRow.date_time):null;
+  const approvedAmt=approvalRow?parseAmt(approvalRow.amount):null;
+  const paidRow=[...rows].reverse().find(r=>/paid/i.test(r.action||''));
+  const paidAt=paidRow?parseWfDate(paidRow.date_time):(c.paid_date?parseWfDate(c.paid_date):null);
+  const received=c.paid_amount!=null?c.paid_amount:(paidRow?parseAmt(paidRow.amount):null);
+  const isPaid=!!paidRow||!!c.is_paid;
+  const queryRow=rows.find(r=>/kept hold|sent back|returned|query|recommended for rejection|updated claim .* pending/i.test(r.action||''));
+  const queryAt=queryRow?parseWfDate(queryRow.date_time):null;
+  let replyAt=null;
+  if(queryRow){const qi=rows.indexOf(queryRow);const reply=rows.slice(qi+1).find(r=>/MEDCO|Patient Feedback Submitted|Initiated|Updated Claim/i.test((r.role_name||'')+' '+(r.action||'')));if(reply)replyAt=parseWfDate(reply.date_time);}
+  const outstanding=Math.max(0,(claimAmt||0)-(received||0));
+  let daysPending=null;
+  if(isPaid&&submissionAt&&paidAt)daysPending=Math.max(0,Math.round((paidAt-submissionAt)/864e5));
+  else if(submissionAt)daysPending=Math.max(0,Math.round((Date.now()-submissionAt)/864e5));
+  return {
+    claim_id:c.claim_no||'', uhid:c.card_no||'', patient:c.patient_name||'', insurance:'', scheme:'',
+    surgery_date:parseCaseDate(c.ip_registration_dt), procedure:c.procedure_name||'',
+    claim_amount:claimAmt||null, submission_date:submissionAt, current_status:c.claim_status||'',
+    query_raised:queryRow?'Yes':'No', query_date:queryAt, reply_date:replyAt, approval_date:approvalAt,
+    amount_approved:approvedAmt, payment_date:paidAt, amount_received:received,
+    outstanding, days_pending:daysPending, follow_up:isPaid?'No':'Yes', remarks:c.latest_comment||'',
+    _is_paid:isPaid, _status:c.claim_status||'', _ip_reg:c.ip_registration_dt||'', _case_no:c.case_no,
+    _search:((c.case_no||'')+' '+(c.patient_name||'')+' '+(c.claim_no||'')+' '+(c.card_no||'')+' '+(c.contact_no||'')).toLowerCase(),
+  };
+}
+async function ensureClaimsData(){
+  if(cmData)return;
+  const cases=await fetchAll('cases','case_no,claim_no,card_no,patient_name,ip_registration_dt,procedure_name,claimed_amount,paid_amount,paid_date,claim_status,latest_comment,is_paid,contact_no');
+  const wf=await fetchAll('claim_workflow','case_no,row_index,date_time,action,amount,remarks,role_name');
+  const byCase={};wf.forEach(r=>{(byCase[r.case_no]=byCase[r.case_no]||[]).push(r);});
+  cmData=cases.map(c=>deriveClaim(c,byCase[c.case_no]||[]));
+}
+function sortCm(rows,sort){const col=CM_COLS.find(c=>c.key===sort.col)||{},s=sort.dir==='asc'?1:-1;
+  return rows.slice().sort((a,b)=>{const x=a[sort.col],y=b[sort.col];
+    if(col.type==='num')return ((x==null?-Infinity:x)-(y==null?-Infinity:y))*s;
+    if(col.type==='date')return ((x?x.getTime():-Infinity)-(y?y.getTime():-Infinity))*s;
+    return String(x||'').localeCompare(String(y||''))*s;});}
+function cmFilteredRows(){
+  const q=($('cm-q').value||'').trim().toLowerCase(), st=$('cm-status').value, pay=$('cm-pay').value, mon=$('cm-month').value;
+  const from=$('cm-from').value?new Date($('cm-from').value+'T00:00:00').getTime():null;
+  const to=$('cm-to').value?new Date($('cm-to').value+'T23:59:59').getTime():null;
+  let rows=cmData||[];
+  if(pay==='unpaid')rows=rows.filter(r=>!r._is_paid); else if(pay==='paid')rows=rows.filter(r=>r._is_paid);
+  if(st)rows=rows.filter(r=>r._status===st);
+  if(mon)rows=rows.filter(r=>ymOf(r._ip_reg)===mon);
+  if(from!=null||to!=null)rows=rows.filter(r=>{const t=dmy(r._ip_reg);if(!t)return false;if(from!=null&&t<from)return false;if(to!=null&&t>to)return false;return true;});
+  if(q)rows=rows.filter(r=>r._search.includes(q));
+  return sortCm(rows,cmSort);
+}
+function setupClaims(){
+  if(!cmSetup){
+    let tw=0;CM_COLS.forEach(c=>tw+=c.w);
+    $('cm-head').innerHTML='<tr>'+CM_COLS.map(c=>`<th data-cmcol="${c.key}" style="width:${c.w}px;cursor:pointer">${c.label}<span class="sar"></span></th>`).join('')+'</tr>';
+    $('cm-table').style.width=tw+'px';
+    $('cm-head').querySelectorAll('th[data-cmcol]').forEach(th=>{th.onclick=()=>{const k=th.dataset.cmcol,col=CM_COLS.find(x=>x.key===k);if(cmSort.col===k)cmSort.dir=cmSort.dir==='asc'?'desc':'asc';else{cmSort.col=k;cmSort.dir=(col.type==='num'||col.type==='date')?'desc':'asc';}cmPage=1;renderClaims();};});
+    cmSetup=true;
+  }
+  const sel=$('cm-status'),cur=sel.value;
+  const statuses=[...new Set((cmData||[]).map(r=>r._status).filter(Boolean))].sort();
+  while(sel.options.length>1)sel.remove(1);
+  statuses.forEach(x=>{const o=document.createElement('option');o.value=x;o.textContent=x;sel.appendChild(o);});
+  sel.value=cur;
+  const msel=$('cm-month'),mcur=msel.value;
+  const months=[...new Set((cmData||[]).map(r=>ymOf(r._ip_reg)).filter(Boolean))].sort().reverse();
+  while(msel.options.length>1)msel.remove(1);
+  months.forEach(ym=>{const o=document.createElement('option');o.value=ym;o.textContent=ymLabel(ym);msel.appendChild(o);});
+  msel.value=mcur;
+}
+function renderClaims(){
+  const rows=cmFilteredRows();
+  const ps=25,total=rows.length,from=(cmPage-1)*ps,pageRows=rows.slice(from,from+ps);
+  const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');
+  const disp=(r,c)=>{const v=r[c.key];if(c.type==='date')return esc(fmtD(v))||'–';if(c.type==='num')return c.key==='days_pending'?(v==null?'–':v):inr(v);if(c.key==='insurance'||c.key==='scheme')return esc(v)||'';return esc(v)||'–';};
+  const titl=(r,c)=>esc(c.type==='date'?(fmtD(r[c.key])||''):(r[c.key]==null?'':String(r[c.key])));
+  const tb=$('cm-rows');
+  tb.innerHTML=pageRows.length?pageRows.map(r=>'<tr class="row" data-case="'+esc(r._case_no)+'">'+CM_COLS.map(c=>`<td class="${c.key==='claim_id'?'link':''}" title="${titl(r,c)}">${disp(r,c)}</td>`).join('')+'</tr>').join(''):`<tr><td colspan="${CM_COLS.length}" class="empty">No claims found</td></tr>`;
+  tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>showDetail(tr.dataset.case));
+  const to=Math.min(total,cmPage*ps);
+  $('cm-info').textContent=total?`Showing ${from+1}–${to} of ${total.toLocaleString()} claims`:'No claims';
+  $('cm-cur').textContent=cmPage;$('cm-prev').disabled=cmPage<=1;$('cm-next').disabled=to>=total;
+  $('cm-head').querySelectorAll('th[data-cmcol]').forEach(th=>{const sar=th.querySelector('.sar');if(sar)sar.textContent=th.dataset.cmcol===cmSort.col?(cmSort.dir==='asc'?' ▲':' ▼'):'';});
+}
+async function loadClaims(){await ensureClaimsData();setupClaims();$('cm-loading').style.display='none';$('cm-content').style.display='block';renderClaims();}
 function fmtRemarks(t){
   if(/\(\d+\)\s*:/.test(t)){const parts=t.split(/\(\d+\)\s*:\s*/).map(p=>p.trim()).filter(Boolean);
     return'<ol>'+parts.map(p=>'<li>'+esc(p).replace(/\?\s*YES\b/g,'? <span class="yes">YES</span>').replace(/\?\s*NO\b/g,'? <span class="no">NO</span>')+'</li>').join('')+'</ol>';}
@@ -758,6 +908,21 @@ $('cases-export').onclick=()=>{
 };
 $('prev').onclick=()=>{if(page>1){page--;renderCases();}};
 $('next').onclick=()=>{page++;renderCases();};
+
+let tcm;$('cm-q').addEventListener('input',()=>{clearTimeout(tcm);tcm=setTimeout(()=>{cmPage=1;renderClaims();},250);});
+$('cm-pay').addEventListener('change',()=>{cmPage=1;renderClaims();});
+$('cm-status').addEventListener('change',()=>{cmPage=1;renderClaims();});
+$('cm-month').addEventListener('change',()=>{$('cm-from').value='';$('cm-to').value='';cmPage=1;renderClaims();});
+$('cm-from').addEventListener('change',()=>{$('cm-month').value='';cmPage=1;renderClaims();});
+$('cm-to').addEventListener('change',()=>{$('cm-month').value='';cmPage=1;renderClaims();});
+$('cm-clear').onclick=()=>{['cm-q','cm-pay','cm-status','cm-month','cm-from','cm-to'].forEach(id=>{$(id).value='';});cmPage=1;renderClaims();};
+$('cm-export').onclick=()=>{
+  const rows=cmFilteredRows().map(r=>{const o={};CM_COLS.forEach(c=>{let v=r[c.key];if(c.type==='date')v=fmtD(v)||'';o[c.label]=(v==null?'':v);});return o;});
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows,{header:CM_COLS.map(c=>c.label)}),'Claims Master');
+  XLSX.writeFile(wb,'Claims_Master_'+new Date().toISOString().slice(0,10)+'.xlsx');
+};
+$('cm-prev').onclick=()=>{if(cmPage>1){cmPage--;renderClaims();}};
+$('cm-next').onclick=()=>{cmPage++;renderClaims();};
 
 checkSession();
 </script>
