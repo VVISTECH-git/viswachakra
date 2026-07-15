@@ -10,3 +10,8 @@ cases.db-*
 debug/
 *.png
 *.log
+
+# session data - contains patient PII, never commit
+portal-pages/
+logs/
+_*.js

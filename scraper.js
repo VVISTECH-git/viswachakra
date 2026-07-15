@@ -124,7 +124,7 @@ async function setStatusDateRange(page, fromStr, toStr, log) {
   log(`Status Date set: ${fromStr} -> ${toStr}`);
 }
 
-async function runSearch(page, log) {
+async function runSearch(page, log, options = {}) {
   log('Clicking Search...');
   // fnSearch() calls the portal's fnCompareDates() internally; on a fresh page load
   // those scripts may not be defined yet ("fnCompareDates is not defined"). Wait for
@@ -167,6 +167,18 @@ async function runSearch(page, log) {
   const m = body.match(/Results\s+\d+\s*-\s*\d+\s+of\s+(\d+)/i);
   const total = m ? parseInt(m[1], 10) : 0;
   log('Total results: ' + (total || '(none)'));
+
+  // count-only: the first results page already shows "... of N"; no need to load all rows.
+  // Distinguish a genuine empty result ("No records found") from a failed/timed-out load.
+  if (options.countOnly) {
+    if (total === 0) {
+      const genuineEmpty = await page.evaluate(
+        () => /No\s+(records|results)\s+found/i.test(document.body ? document.body.textContent : ''),
+      ).catch(() => false);
+      if (!genuineEmpty) throw new Error('search returned no results table (timeout/blocked) - needs retry');
+    }
+    return total;
+  }
 
   if (total > 10) {
     const link1000 = page.locator('a', { hasText: /^1000$/ }).first();
@@ -523,7 +535,124 @@ async function rescrapeCases(caseNos, opts = {}) {
   }
 }
 
-module.exports = { runSync, rescrapeCases, fmt };
+/**
+ * Count-only reconciliation helper: log in ONCE, then for each [from, to] window
+ * read the portal's "Results N of N" total WITHOUT deep-scraping. Fast.
+ * windows: array of [fromStr, toStr]. Returns [{ from, to, portal }].
+ */
+async function countRanges(windows, opts = {}) {
+  const headless = opts.headless !== undefined ? opts.headless : process.env.HEADLESS === 'true';
+  const log = opts.log || console.log;
+  const reloginEvery = opts.reloginEvery || 40; // proactively re-login to beat session throttling
+  const maxTries = opts.maxTries || 4;
+  const onResult = opts.onResult; // optional callback(result, index) for live progress/persistence
+
+  let browser = null;
+  let page = null;
+  async function fresh() {
+    if (browser) await browser.close().catch(() => {});
+    browser = await chromium.launch({ channel: 'chrome', headless });
+    const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    context.on('page', (p) => attachDialogHandler(p, log));
+    page = await login(context, log);
+  }
+  await fresh();
+
+  const out = [];
+  try {
+    for (let i = 0; i < windows.length; i++) {
+      const [from, to] = windows[i];
+      if (i > 0 && i % reloginEvery === 0) { log(`  [proactive re-login after ${reloginEvery} windows]`); await fresh(); }
+
+      let portal = 0;
+      let ok = false;
+      for (let attempt = 1; attempt <= maxTries; attempt++) {
+        try {
+          await gotoCasesSearch(page, log);
+          await setStatusDateRange(page, from, to, log);
+          portal = await runSearch(page, log, { countOnly: true });
+          ok = true;
+          break;
+        } catch (e) {
+          log(`  [${from} -> ${to}] attempt ${attempt}/${maxTries} failed: ${String((e && e.message) || e).split('\n')[0]}`);
+          if (attempt < maxTries) await fresh(); // session likely dead - re-login before retrying
+        }
+      }
+      const result = { from, to, portal, ok };
+      out.push(result);
+      if (onResult) await onResult(result, i);
+      await page.waitForTimeout(400); // stay gentle on the legacy portal
+    }
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+  return out;
+}
+
+/**
+ * List-only sweep: log in (with periodic re-login), and for each [from, to] window
+ * return the FULL list of case numbers the portal shows (no deep-scrape). Retries on
+ * failed/partial loads. Used to reconcile the SET of case numbers portal vs Supabase.
+ * windows: array of [fromStr, toStr]. Returns [{ from, to, total, caseNos, ok }].
+ */
+async function listRanges(windows, opts = {}) {
+  const headless = opts.headless !== undefined ? opts.headless : process.env.HEADLESS === 'true';
+  const log = opts.log || console.log;
+  const reloginEvery = opts.reloginEvery || 30; // list windows are heavier than count windows
+  const maxTries = opts.maxTries || 4;
+  const onResult = opts.onResult;
+
+  let browser = null;
+  let page = null;
+  async function fresh() {
+    if (browser) await browser.close().catch(() => {});
+    browser = await chromium.launch({ channel: 'chrome', headless });
+    const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    context.on('page', (p) => attachDialogHandler(p, log));
+    page = await login(context, log);
+  }
+  await fresh();
+
+  const out = [];
+  try {
+    for (let i = 0; i < windows.length; i++) {
+      const [from, to] = windows[i];
+      if (i > 0 && i % reloginEvery === 0) { log(`  [proactive re-login after ${reloginEvery} windows]`); await fresh(); }
+
+      let caseNos = []; let total = 0; let ok = false;
+      for (let attempt = 1; attempt <= maxTries; attempt++) {
+        try {
+          await gotoCasesSearch(page, log);
+          await setStatusDateRange(page, from, to, log);
+          total = await runSearch(page, log); // full mode: switches to 1000/page so ALL rows load
+          if (total === 0) {
+            const genuineEmpty = await page.evaluate(
+              () => /No\s+(records|results)\s+found/i.test(document.body ? document.body.textContent : ''),
+            ).catch(() => false);
+            if (!genuineEmpty) throw new Error('no results table (timeout/blocked) - needs retry');
+            caseNos = []; ok = true; break;
+          }
+          const list = await scrapeResultsList(page);
+          const nos = list.map((r) => r.case_no).filter(Boolean);
+          if (nos.length < total) throw new Error(`partial list ${nos.length}/${total} - needs retry`);
+          caseNos = nos; ok = true; break;
+        } catch (e) {
+          log(`  [${from} -> ${to}] attempt ${attempt}/${maxTries} failed: ${String((e && e.message) || e).split('\n')[0]}`);
+          if (attempt < maxTries) await fresh();
+        }
+      }
+      const result = { from, to, total, caseNos, ok };
+      out.push(result);
+      if (onResult) await onResult(result, i);
+      await page.waitForTimeout(400);
+    }
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+  return out;
+}
+
+module.exports = { runSync, rescrapeCases, fmt, countRanges, listRanges };
 
 if (require.main === module) {
   const limitArg = arg('limit', '');

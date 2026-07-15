@@ -130,6 +130,11 @@
   .cmtab th[data-cmcol]:hover{color:var(--primary)}
   .cmtab td{padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cmtab tr:last-child td{border-bottom:none}
+  /* freeze first column (Claim ID) so it stays visible while scrolling right */
+  .cmtab th:first-child,.cmtab td:first-child{position:sticky;left:0;box-shadow:1px 0 0 var(--border-strong)}
+  .cmtab th:first-child{z-index:3}
+  .cmtab td:first-child{z-index:2;background:var(--card)}
+  .cmtab tr.row:hover td:first-child{background:var(--primary-light)}
   #overlay{position:fixed;inset:0;background:rgba(10,12,24,.45);z-index:40;display:none}
   #panel{position:fixed;top:0;right:-760px;width:720px;max-width:96vw;height:100vh;background:var(--card);z-index:50;box-shadow:-16px 0 50px rgba(10,12,24,.25);transition:right .25s;display:flex;flex-direction:column}
   #panel.open{right:0}
@@ -298,7 +303,7 @@
       <select id="cases-month" title="Registration month"><option value="">Any registration month</option></select>
       <input type="date" id="cases-from" class="dtin" title="Registered from">
       <input type="date" id="cases-to" class="dtin" title="Registered to">
-      <select id="pageSize"><option>25</option><option>50</option><option>100</option></select>
+      <select id="pageSize"><option>10</option><option selected>25</option><option>50</option><option>100</option></select>
       <button class="btn sm ghost" id="cases-clear">Clear</button>
       <button class="btn sm ghost" id="cases-export">⬇ Excel</button>
     </div>
@@ -342,6 +347,7 @@
         </div>
         <div class="pager">
           <span id="cm-info">–</span><span class="grow"></span>
+          <label style="font-size:12px;color:var(--text-2)">Rows <select id="cm-size"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></label>
           <button class="btn sm ghost" id="cm-prev">‹ Prev</button><span id="cm-cur">1</span><button class="btn sm ghost" id="cm-next">Next ›</button>
         </div>
       </div>
@@ -837,7 +843,7 @@ function setupClaims(){
 }
 function renderClaims(){
   const rows=cmFilteredRows();
-  const ps=25,total=rows.length,from=(cmPage-1)*ps,pageRows=rows.slice(from,from+ps);
+  const ps=parseInt($('cm-size').value,10)||25,total=rows.length,from=(cmPage-1)*ps,pageRows=rows.slice(from,from+ps);
   const inr=n=>n==null?'<span style="color:var(--text-3)">–</span>':'₹'+Number(n).toLocaleString('en-IN');
   const disp=(r,c)=>{const v=r[c.key];if(c.type==='date')return esc(fmtD(v))||'–';if(c.type==='num')return c.key==='days_pending'?(v==null?'–':v):inr(v);if(c.key==='insurance'||c.key==='scheme')return esc(v)||'';return esc(v)||'–';};
   const titl=(r,c)=>esc(c.type==='date'?(fmtD(r[c.key])||''):(r[c.key]==null?'':String(r[c.key])));
@@ -923,6 +929,7 @@ $('cm-export').onclick=()=>{
 };
 $('cm-prev').onclick=()=>{if(cmPage>1){cmPage--;renderClaims();}};
 $('cm-next').onclick=()=>{cmPage++;renderClaims();};
+$('cm-size').addEventListener('change',()=>{cmPage=1;renderClaims();});
 
 checkSession();
 </script>
