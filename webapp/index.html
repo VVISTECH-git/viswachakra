@@ -104,6 +104,7 @@
   .dtabs button.on{color:var(--primary);border-bottom-color:var(--primary)}
   .cwrap{position:relative;height:260px}
   @media(max-width:820px){.kpi-row{grid-template-columns:1fr 1fr}.chart-grid{grid-template-columns:1fr}}
+  @media(max-width:640px){header{height:auto;flex-wrap:wrap;padding:10px 14px}.nav{order:3;margin-left:0;width:100%;justify-content:center}.hright{margin-left:auto}.kpis{grid-template-columns:1fr 1fr}.kpi-row{grid-template-columns:1fr 1fr}}
   .toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
   .toolbar input[type=text]{flex:1 1 220px;min-width:180px;max-width:360px;padding:9px 13px;border:1px solid var(--border-strong);border-radius:9px;font-size:13.5px;background:var(--card);color:var(--text);font-family:inherit}
   .toolbar select{flex:0 0 auto;max-width:220px;padding:9px 13px;border:1px solid var(--border-strong);border-radius:9px;font-size:13.5px;background:var(--card);color:var(--text);font-family:inherit}
@@ -210,6 +211,18 @@
   <main id="view-dash">
     <div id="dash-loading" class="empty" style="padding:60px">Crunching the numbers…</div>
     <div id="dash-content" style="display:none">
+      <div class="toolbar" style="margin-bottom:14px">
+        <label style="font-size:12.5px;color:var(--text-2);font-weight:600;display:flex;align-items:center;gap:7px">Period
+          <select id="dash-period" style="padding:8px 12px;border:1px solid var(--border-strong);border-radius:9px;font-size:13px;font-family:inherit;background:var(--card);color:var(--text)">
+            <option value="all" selected>All time</option>
+            <option value="12m">Last 12 months</option>
+            <option value="6m">Last 6 months</option>
+            <option value="fy">This financial year</option>
+            <option value="lfy">Last financial year</option>
+          </select>
+        </label>
+        <span style="font-size:11.5px;color:var(--text-3)">filtered by IP registration date</span>
+      </div>
       <div class="hero">
         <div class="hero-row">
           <div class="hero-left">
@@ -450,6 +463,7 @@ function ymOf(s){const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);return
 function ymLabel(ym){const p=ym.split('-');return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1]+' '+p[0];}
 function resizeCharts(){setTimeout(()=>{Object.values(charts).forEach(c=>{try{c.resize();}catch(e){}});},40);}
 function setupDashTabs(){
+  const dp=$('dash-period');if(dp&&!dp._wired){dp._wired=true;dp.addEventListener('change',()=>loadDashboard());}
   document.querySelectorAll('.dtabs button').forEach(b=>{
     b.onclick=()=>{
       document.querySelectorAll('.dtabs button').forEach(x=>x.classList.toggle('on',x===b));
@@ -484,7 +498,8 @@ async function fetchAll(table,cols){
   const out=[];let from=0;const size=1000;
   while(true){
     const {data,error}=await sb.from(table).select(cols).range(from,from+size-1);
-    if(error||!data||!data.length)break;
+    if(error)throw new Error(error.message||('Failed to load '+table));  // surface errors instead of silently returning partial data
+    if(!data||!data.length)break;
     out.push(...data);
     if(data.length<size)break;
     from+=size;
@@ -495,43 +510,60 @@ async function fetchAll(table,cols){
 const charts={};
 function makeChart(id,cfg){if(charts[id])charts[id].destroy();charts[id]=new Chart($(id),cfg);}
 
+// Dashboard reads ONLY the precomputed `cases` columns (claimed_amount / paid_amount /
+// deduction / is_paid / paid_date / settlement_days). No workflow download, so it is fast,
+// and "paid" means exactly the same thing here as on the Cases / Claims tabs (is_paid).
+let dashAll=null;
+function dashPeriod(rows){
+  const v=($('dash-period')&&$('dash-period').value)||'all';
+  if(v==='all')return rows;
+  const now=new Date();let start=null,end=null;
+  if(v==='12m')start=new Date(now.getFullYear(),now.getMonth()-11,1);
+  else if(v==='6m')start=new Date(now.getFullYear(),now.getMonth()-5,1);
+  else if(v==='fy'){const y=now.getMonth()>=3?now.getFullYear():now.getFullYear()-1;start=new Date(y,3,1);end=new Date(y+1,2,31,23,59,59);}
+  else if(v==='lfy'){const y=now.getMonth()>=3?now.getFullYear()-1:now.getFullYear()-2;start=new Date(y,3,1);end=new Date(y+1,2,31,23,59,59);}
+  return rows.filter(c=>{const d=parseStatusDate(c.ip_registration_dt);if(!d)return false;if(start&&d<start)return false;if(end&&d>end)return false;return true;});
+}
+function showDashError(e){$('dash-loading').innerHTML='Couldn\'t load the dashboard — '+esc((e&&e.message)||'network error')+'. <a href="#" id="dash-retry" style="color:var(--primary);font-weight:600">Retry</a>';$('dash-loading').style.display='block';$('dash-content').style.display='none';const r=$('dash-retry');if(r)r.onclick=ev=>{ev.preventDefault();dashAll=null;$('dash-loading').textContent='Crunching the numbers…';loadDashboard();};}
 async function loadDashboard(){
-  const cases=await fetchAll('cases','case_no,claim_status,status_date,procedure_name');
-  const wf=await fetchAll('claim_workflow','case_no,row_index,date_time,action,amount');
-  const byCase={};wf.forEach(r=>{(byCase[r.case_no]=byCase[r.case_no]||[]).push(r);});
+  try{ if(!dashAll)dashAll=await fetchAll('cases','case_no,claim_status,status_date,ip_registration_dt,procedure_name,claimed_amount,paid_amount,deduction,is_paid,paid_date,settlement_days'); }
+  catch(e){ showDashError(e); return; }
+  const cases=dashPeriod(dashAll);
   const now=new Date();
   let totClaimed=0,totPaid=0,totDed=0,pendVal=0,paidCount=0,tatSum=0,tatN=0,tatMax=0,oldVal=0,oldN=0,rejectedCount=0;
   const monMoney={},monTat={},monDed={},aging={'0–30 days':0,'31–60':0,'61–90':0,'90+ days':0},statusCount={};
   const monCount={},procCount={},tatDist={'0–30':0,'31–60':0,'61–90':0,'91–180':0,'180+':0},pendStatus={};
-  const cohRaised={},cohPaid={},cohPend={},cohLag={},monPaidCnt={},procStats={},scatterPts=[]; // by SUBMISSION month; monPaidCnt by PAYMENT month; procStats per procedure; scatterPts=paid claims (amount vs days)
+  const cohRaised={},cohPaid={},cohPend={},cohLag={},monPaidCnt={},procStats={},scatterPts=[]; // by REGISTRATION month; monPaidCnt by PAYMENT month; procStats per procedure; scatterPts=paid claims (amount vs days)
 
   cases.forEach(c=>{
-    const rows=(byCase[c.case_no]||[]).sort((a,b)=>a.row_index-b.row_index);
-    const initiated=rows.find(r=>/initiated/i.test(r.action||''))||rows[0];
-    const paidRow=[...rows].reverse().find(r=>/paid/i.test(r.action||''));
-    const claimed=initiated?parseAmt(initiated.amount):0;
-    const initAt=initiated?parseWfDate(initiated.date_time):null;
-    if(initAt){monCount[monKey(initAt)]=(monCount[monKey(initAt)]||0)+1;cohRaised[monKey(initAt)]=(cohRaised[monKey(initAt)]||0)+1;}
+    const paid=!!c.is_paid;
+    const received=c.paid_amount!=null?c.paid_amount:0;
+    const ded=c.deduction!=null?c.deduction:0;
+    // claimed = what the hospital billed: for paid claims that's received+deduction; for unpaid, the claim amount on file
+    const claimed=paid?(received+ded):(c.claimed_amount!=null?c.claimed_amount:0);
+    const regAt=parseStatusDate(c.ip_registration_dt);      // registration date = "month raised" basis
+    const paidAt=parseWfDate(c.paid_date);                   // paid_date is "DD-Mon-YYYY h:mm AM/PM"
+    const days=(c.settlement_days!=null)?c.settlement_days:null;
+    if(regAt){const rk=monKey(regAt);monCount[rk]=(monCount[rk]||0)+1;cohRaised[rk]=(cohRaised[rk]||0)+1;}
     const procName=c.procedure_name?(String(c.procedure_name).replace(/\s*\(.*$/,'').trim()||'(unspecified)'):null;
     if(procName){procCount[procName]=(procCount[procName]||0)+1;const ps=(procStats[procName]=procStats[procName]||{count:0,lagSum:0,lagN:0,dedSum:0,claimedSum:0});ps.count++;}
-    if(claimed>0){totClaimed+=claimed;if(initAt){const k=monKey(initAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).c+=claimed;}}
-    if(paidRow){
-      const paid=parseAmt(paidRow.amount),paidAt=parseWfDate(paidRow.date_time);
-      totPaid+=paid;paidCount++;const ded=Math.max(0,claimed-paid);totDed+=ded;
-      if(procName){const ps=procStats[procName];ps.claimedSum+=claimed;ps.dedSum+=ded;if(initAt&&paidAt){ps.lagSum+=Math.max(0,Math.round((paidAt-initAt)/864e5));ps.lagN++;}}
-      if(initAt){const sk=monKey(initAt);cohPaid[sk]=(cohPaid[sk]||0)+1;if(paidAt)cohLag[sk]=(cohLag[sk]||0)+Math.max(0,Math.round((paidAt-initAt)/864e5));}
-      if(paidAt){const k=monKey(paidAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).p+=paid;const md=(monDed[k]=monDed[k]||{d:0,b:0});md.d+=ded;md.b+=claimed;monPaidCnt[k]=(monPaidCnt[k]||0)+1;}
-      if(initAt&&paidAt){const days=Math.round((paidAt-initAt)/864e5);if(days>=0){tatSum+=days;tatN++;if(days>tatMax)tatMax=days;if(claimed>0)scatterPts.push({x:claimed,y:days});const k=monKey(paidAt);const mt=(monTat[k]=monTat[k]||{s:0,n:0});mt.s+=days;mt.n++;
-        if(days<=30)tatDist['0–30']++;else if(days<=60)tatDist['31–60']++;else if(days<=90)tatDist['61–90']++;else if(days<=180)tatDist['91–180']++;else tatDist['180+']++;}}
+    if(claimed>0){totClaimed+=claimed;if(regAt){const k=monKey(regAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).c+=claimed;}}
+    if(c.claim_status)statusCount[c.claim_status]=(statusCount[c.claim_status]||0)+1;
+    if(paid){
+      totPaid+=received;paidCount++;totDed+=ded;
+      if(procName){const ps=procStats[procName];ps.claimedSum+=claimed;ps.dedSum+=ded;if(days!=null){ps.lagSum+=Math.max(0,days);ps.lagN++;}}
+      if(regAt){const sk=monKey(regAt);cohPaid[sk]=(cohPaid[sk]||0)+1;if(days!=null)cohLag[sk]=(cohLag[sk]||0)+Math.max(0,days);}
+      if(paidAt){const k=monKey(paidAt);(monMoney[k]=monMoney[k]||{c:0,p:0}).p+=received;const md=(monDed[k]=monDed[k]||{d:0,b:0});md.d+=ded;md.b+=claimed;monPaidCnt[k]=(monPaidCnt[k]||0)+1;const mt=(monTat[k]=monTat[k]||{s:0,n:0});if(days!=null){mt.s+=Math.max(0,days);mt.n++;}}
+      if(days!=null&&days>=0){tatSum+=days;tatN++;if(days>tatMax)tatMax=days;if(claimed>0)scatterPts.push({x:claimed,y:days});
+        if(days<=30)tatDist['0–30']++;else if(days<=60)tatDist['31–60']++;else if(days<=90)tatDist['61–90']++;else if(days<=180)tatDist['91–180']++;else tatDist['180+']++;}
     }else{
-      pendVal+=claimed;const sd=parseStatusDate(c.status_date)||initAt;const age=sd?Math.round((now-sd)/864e5):0;
+      pendVal+=claimed;const sd=parseStatusDate(c.status_date)||regAt;const age=sd?Math.round((now-sd)/864e5):0;
       if(age<=30)aging['0–30 days']+=claimed;else if(age<=60)aging['31–60']+=claimed;else if(age<=90)aging['61–90']+=claimed;else aging['90+ days']+=claimed;
       if(age>90){oldVal+=claimed;oldN++;}
       if(c.claim_status)pendStatus[c.claim_status]=(pendStatus[c.claim_status]||0)+1;
       if(/reject|cancel|terminat/i.test(c.claim_status||''))rejectedCount++;
-      if(initAt){const sk=monKey(initAt);cohPend[sk]=(cohPend[sk]||0)+1;}
+      if(regAt){const sk=monKey(regAt);cohPend[sk]=(cohPend[sk]||0)+1;}
     }
-    if(c.claim_status)statusCount[c.claim_status]=(statusCount[c.claim_status]||0)+1;
   });
 
   const dedPct=(totPaid+totDed)>0?(totDed/(totPaid+totDed)*100):0;
@@ -679,7 +711,7 @@ async function loadStats(){
   const total=(await sb.from('cases').select('*',{count:'exact',head:true})).count||0;
   const wf=(await sb.from('claim_workflow').select('case_no',{count:'exact',head:true})).count||0;
   const hold=(await sb.from('cases').select('*',{count:'exact',head:true}).or('claim_status.ilike.%Hold%,claim_status.ilike.%Stopped%')).count||0;
-  const paid=(await sb.from('cases').select('*',{count:'exact',head:true}).or('claim_status.ilike.%Paid%,claim_status.ilike.%Credited%')).count||0;
+  const paid=(await sb.from('cases').select('*',{count:'exact',head:true}).eq('is_paid',true)).count||0;  // use is_paid so this agrees with the dashboard & tables
   $('k-total').textContent=total.toLocaleString();$('k-wf').textContent=wf.toLocaleString();
   $('k-hold').textContent=hold.toLocaleString();$('k-paid').textContent=paid.toLocaleString();
   const {data}=await sb.from('cases').select('last_synced').order('last_synced',{ascending:false}).limit(1);
@@ -738,7 +770,7 @@ function renderCases(){
   $('pg-cur').textContent=page;$('prev').disabled=page<=1;$('next').disabled=to>=total;
   document.querySelectorAll('#view-cases th[data-scol]').forEach(th=>{const sar=th.querySelector('.sar');if(sar)sar.textContent=th.dataset.scol===casesSort.col?(casesSort.dir==='asc'?' ▲':' ▼'):'';});
 }
-async function loadCases(){await ensureSummaryData();setupCasesFilters();renderCases();}
+async function loadCases(){try{await ensureSummaryData();setupCasesFilters();renderCases();}catch(e){$('rows').innerHTML='<tr><td colspan="8" class="empty">Couldn\'t load cases — '+esc((e&&e.message)||'network error')+'</td></tr>';}}
 
 // ---- Claims Master tab: 21-column register, lifecycle derived client-side from the workflow ----
 const CM_COLS=[
@@ -788,7 +820,7 @@ function deriveClaim(c,rows){
   if(isPaid&&submissionAt&&paidAt)daysPending=Math.max(0,Math.round((paidAt-submissionAt)/864e5));
   else if(submissionAt)daysPending=Math.max(0,Math.round((Date.now()-submissionAt)/864e5));
   return {
-    claim_id:c.claim_no||'', uhid:c.card_no||'', patient:c.patient_name||'', insurance:'', scheme:'',
+    claim_id:c.claim_no||'', uhid:c.card_no||'', patient:c.patient_name||'', insurance:'Dr NTR Vaidya Seva', scheme:'Dr NTR Vaidya Seva',
     surgery_date:parseCaseDate(c.ip_registration_dt), procedure:c.procedure_name||'',
     claim_amount:claimAmt||null, submission_date:submissionAt, current_status:c.claim_status||'',
     query_raised:queryRow?'Yes':'No', query_date:queryAt, reply_date:replyAt, approval_date:approvalAt,
@@ -855,7 +887,7 @@ function renderClaims(){
   $('cm-cur').textContent=cmPage;$('cm-prev').disabled=cmPage<=1;$('cm-next').disabled=to>=total;
   $('cm-head').querySelectorAll('th[data-cmcol]').forEach(th=>{const sar=th.querySelector('.sar');if(sar)sar.textContent=th.dataset.cmcol===cmSort.col?(cmSort.dir==='asc'?' ▲':' ▼'):'';});
 }
-async function loadClaims(){await ensureClaimsData();setupClaims();$('cm-loading').style.display='none';$('cm-content').style.display='block';renderClaims();}
+async function loadClaims(){try{await ensureClaimsData();setupClaims();$('cm-loading').style.display='none';$('cm-content').style.display='block';renderClaims();}catch(e){$('cm-loading').innerHTML='Couldn\'t load the claims register — '+esc((e&&e.message)||'network error');$('cm-loading').style.display='block';$('cm-content').style.display='none';}}
 function fmtRemarks(t){
   if(/\(\d+\)\s*:/.test(t)){const parts=t.split(/\(\d+\)\s*:\s*/).map(p=>p.trim()).filter(Boolean);
     return'<ol>'+parts.map(p=>'<li>'+esc(p).replace(/\?\s*YES\b/g,'? <span class="yes">YES</span>').replace(/\?\s*NO\b/g,'? <span class="no">NO</span>')+'</li>').join('')+'</ol>';}
@@ -874,11 +906,12 @@ async function showDetail(caseNo){
   if(!rows||!rows.length){h+=`<div class="empty" style="padding:20px">${esc(c.workflow_note||'No claim workflow captured yet.')}</div>`;}
   else if(wfView==='table'){
     h+=`<table class="wtab"><thead><tr><th>Date &amp; Time</th><th>Role &amp; Name</th><th>Remarks</th><th>Action</th><th style="text-align:right">Amount</th></tr></thead><tbody>`;
-    rows.forEach(r=>{h+=`<tr><td class="dt">${esc(r.date_time)}</td><td>${esc(r.role_name)}</td><td class="rm">${fmtRemarks(r.remarks||'')}</td><td>${esc(r.action)}</td><td class="amt">₹${esc(r.amount)}</td></tr>`;});
+    const amtOK=v=>v!=null&&String(v).trim()!==''&&String(v).trim()!=='-';
+    rows.forEach(r=>{h+=`<tr><td class="dt">${esc(r.date_time)}</td><td>${esc(r.role_name)}</td><td class="rm">${fmtRemarks(r.remarks||'')}</td><td>${esc(r.action)}</td><td class="amt">${amtOK(r.amount)?'₹'+esc(r.amount):'–'}</td></tr>`;});
     h+='</tbody></table>';
   }
-  else{h+='<div class="tl">';rows.forEach(r=>{const cl=/hold|stopped|reject/i.test(r.action||'')?' hold':/paid|approv/i.test(r.action||'')?' paid':'';
-    h+=`<div class="step${cl}"><div class="h">${esc(r.action)} · ${esc(r.role_name)} <span class="w">· ${esc(r.date_time)} · ₹${esc(r.amount)}</span></div><div class="r">${fmtRemarks(r.remarks||'')}</div></div>`;});h+='</div>';}
+  else{h+='<div class="tl">';const amtOK=v=>v!=null&&String(v).trim()!==''&&String(v).trim()!=='-';rows.forEach(r=>{const cl=/hold|stopped|reject/i.test(r.action||'')?' hold':/paid|approv/i.test(r.action||'')?' paid':'';
+    h+=`<div class="step${cl}"><div class="h">${esc(r.action)} · ${esc(r.role_name)} <span class="w">· ${esc(r.date_time)}${amtOK(r.amount)?' · ₹'+esc(r.amount):''}</span></div><div class="r">${fmtRemarks(r.remarks||'')}</div></div>`;});h+='</div>';}
   $('p-body').innerHTML=h;$('overlay').style.display='block';$('panel').classList.add('open');
   const setV=v=>{wfView=v;localStorage.setItem('vc-wfview',v);showDetail(caseNo);};
   if($('vt-tl'))$('vt-tl').onclick=()=>setV('timeline');
@@ -890,13 +923,15 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closePanel();});
 
 $('export-btn').addEventListener('click',async()=>{
   $('export-btn').textContent='…';
-  const {data:cases}=await sb.from('cases').select('*').order('case_no');
-  const {data:wf}=await sb.from('claim_workflow').select('*').order('case_no').order('row_index');
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cases||[]),'Cases');
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(wf||[]),'Claim workflow');
-  XLSX.writeFile(wb,'viswachakra-cases-'+new Date().toISOString().slice(0,10)+'.xlsx');
-  $('export-btn').textContent='⬇ Excel';
+  try{
+    const cases=await fetchAll('cases','*');           // paginated — was capped at 1000 rows
+    const wf=await fetchAll('claim_workflow','*');
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cases||[]),'Cases');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(wf||[]),'Claim workflow');
+    XLSX.writeFile(wb,'viswachakra-cases-'+new Date().toISOString().slice(0,10)+'.xlsx');
+  }catch(e){alert('Export failed — '+((e&&e.message)||'network error'));}
+  finally{$('export-btn').textContent='⬇ Excel';}
 });
 
 let t;$('q').addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{page=1;renderCases();},250);});
