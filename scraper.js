@@ -605,7 +605,7 @@ async function listRanges(windows, opts = {}) {
   let browser = null;
   let page = null;
   async function fresh() {
-    if (browser) await browser.close().catch(() => {});
+    if (browser) await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 15000))]);
     browser = await chromium.launch({ channel: 'chrome', headless });
     const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
     context.on('page', (p) => attachDialogHandler(p, log));
@@ -652,7 +652,82 @@ async function listRanges(windows, opts = {}) {
   return out;
 }
 
-module.exports = { runSync, rescrapeCases, fmt, countRanges, listRanges };
+/**
+ * Workflow-only deep scrape: log in (with periodic re-login), and for each case number
+ * search it, open it, and scrape ONLY its claim workflow (timeline). Returns
+ * [{ case_no, rows, note, ok }]. Does not touch list fields. Retries + re-logins.
+ */
+async function scrapeCaseWorkflows(caseNos, opts = {}) {
+  const headless = opts.headless !== undefined ? opts.headless : process.env.HEADLESS === 'true';
+  const log = opts.log || console.log;
+  const reloginEvery = opts.reloginEvery || 30;
+  const maxTries = opts.maxTries || 3;
+  const onResult = opts.onResult;
+
+  const caseTimeoutMs = opts.caseTimeoutMs || 75000; // hard cap per case so a stuck op can't freeze the run
+  let browser = null;
+  let page = null;
+  async function fresh() {
+    if (browser) await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 15000))]);
+    browser = await chromium.launch({ channel: 'chrome', headless });
+    const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    context.on('page', (p) => attachDialogHandler(p, log));
+    page = await login(context, log);
+  }
+  // resilient (re)login: a single portal login hiccup must NOT crash the whole run
+  async function freshResilient() {
+    for (let a = 1; a <= 6; a++) {
+      try { await fresh(); return; }
+      catch (e) { log(`  [re-login attempt ${a}/6 failed: ${String((e && e.message) || e).split('\n')[0]}]`); await new Promise((r) => setTimeout(r, a * 5000)); }
+    }
+    throw new Error('re-login failed after 6 attempts (portal may be down)');
+  }
+  await freshResilient();
+
+  const out = [];
+  try {
+    for (let i = 0; i < caseNos.length; i++) {
+      const caseNo = caseNos[i];
+      let rows = []; let note = ''; let ok = false;
+      // per-iteration guard: NOTHING here may throw out and kill the whole run
+      try {
+        if (i > 0 && i % reloginEvery === 0) { log(`  [proactive re-login after ${reloginEvery} cases]`); await freshResilient(); }
+        for (let attempt = 1; attempt <= maxTries; attempt++) {
+          try {
+            await Promise.race([
+              (async () => {
+                await searchCaseByNo(page, caseNo, log);
+                const opened = await openCaseByText(page, caseNo);
+                if (!opened) throw new Error('case page did not load');
+                const wf = await scrapeClaimWorkflow(page, log);
+                rows = wf.rows; note = wf.note || '';
+              })(),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('case timed out after ' + caseTimeoutMs + 'ms')), caseTimeoutMs)),
+            ]);
+            ok = true;
+            break;
+          } catch (e) {
+            log(`  [${caseNo}] attempt ${attempt}/${maxTries}: ${String((e && e.message) || e).split('\n')[0]}`);
+            if (attempt < maxTries) await freshResilient();
+          }
+        }
+      } catch (loopErr) {
+        // re-login gave up / unexpected error: recover the browser and keep going (never crash the run)
+        log(`  [${caseNo}] recovering: ${String((loopErr && loopErr.message) || loopErr).split('\n')[0]}`);
+        try { await freshResilient(); } catch (e2) { log(`  [re-login still failing, pausing 30s: ${String((e2 && e2.message) || e2).split('\n')[0]}]`); await new Promise((r) => setTimeout(r, 30000)); }
+      }
+      const result = { case_no: caseNo, rows, note, ok };
+      out.push(result);
+      try { if (onResult) await onResult(result, i); } catch (e) { log(`  [onResult error ${caseNo}: ${String((e && e.message) || e).split('\n')[0]}]`); }
+      await new Promise((r) => setTimeout(r, 2000)); // gentle; page-independent so a dead page can't throw here
+    }
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+  return out;
+}
+
+module.exports = { runSync, rescrapeCases, fmt, countRanges, listRanges, scrapeCaseWorkflows };
 
 if (require.main === module) {
   const limitArg = arg('limit', '');
