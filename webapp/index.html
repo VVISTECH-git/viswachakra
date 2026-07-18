@@ -492,6 +492,14 @@ function parseStatusDate(s){const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4
 function parseAmt(s){const n=parseInt(String(s==null?'':s).replace(/[^0-9]/g,''),10);return isNaN(n)?0:n;}
 function monKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function monLabel(k){const p=k.split('-');return['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1]+' '+p[0].slice(2);}
+// ---- adaptive time granularity: keep months for short spans, roll up to quarters/years for long ones ----
+function granFor(monthKeys){if(!monthKeys.length)return 'month';const ks=monthKeys.slice().sort();const a=ks[0].split('-').map(Number),b=ks[ks.length-1].split('-').map(Number);const span=(b[0]-a[0])*12+(b[1]-a[1])+1;if(span<=24)return 'month';if(span<=72)return 'quarter';return 'year';}
+function bKey(ym,gran){const p=ym.split('-').map(Number);if(gran==='year')return String(p[0]);if(gran==='quarter')return p[0]+'-Q'+(Math.floor((p[1]-1)/3)+1);return ym;}
+function bLabel(key,gran){if(gran==='year')return key;if(gran==='quarter'){const s=key.split('-Q');return 'Q'+s[1]+" '"+s[0].slice(2);}return monLabel(key);}
+// roll a YYYY-MM-keyed map up to gran, summing leaves (numbers, or objects summed field-wise)
+function rollup(map,gran){if(gran==='month')return map;const out={};for(const ym in map){const k=bKey(ym,gran),v=map[ym];if(typeof v==='number')out[k]=(out[k]||0)+v;else{const o=out[k]=out[k]||{};for(const f in v)o[f]=(o[f]||0)+v[f];}}return out;}
+// a case's "month raised" date: IP registration, else (paid) paid_date − settlement days, else status date
+function caseRegDate(c){let d=parseStatusDate(c.ip_registration_dt);if(!d){const pd=parseWfDate(c.paid_date),days=c.settlement_days!=null?c.settlement_days:null;if(pd&&days!=null)d=new Date(pd.getTime()-days*864e5);}return d||parseStatusDate(c.status_date);}
 function inrShort(n){n=Math.round(n||0);if(n>=1e7)return'₹'+(n/1e7).toFixed(2)+' Cr';if(n>=1e5)return'₹'+(n/1e5).toFixed(2)+' L';if(n>=1e3)return'₹'+(n/1e3).toFixed(0)+'K';return'₹'+n;}
 
 async function fetchAll(table,cols){
@@ -522,7 +530,7 @@ function dashPeriod(rows){
   else if(v==='6m')start=new Date(now.getFullYear(),now.getMonth()-5,1);
   else if(v==='fy'){const y=now.getMonth()>=3?now.getFullYear():now.getFullYear()-1;start=new Date(y,3,1);end=new Date(y+1,2,31,23,59,59);}
   else if(v==='lfy'){const y=now.getMonth()>=3?now.getFullYear()-1:now.getFullYear()-2;start=new Date(y,3,1);end=new Date(y+1,2,31,23,59,59);}
-  return rows.filter(c=>{const d=parseStatusDate(c.ip_registration_dt);if(!d)return false;if(start&&d<start)return false;if(end&&d>end)return false;return true;});
+  return rows.filter(c=>{const d=caseRegDate(c);if(!d)return false;if(start&&d<start)return false;if(end&&d>end)return false;return true;});
 }
 function showDashError(e){$('dash-loading').innerHTML='Couldn\'t load the dashboard — '+esc((e&&e.message)||'network error')+'. <a href="#" id="dash-retry" style="color:var(--primary);font-weight:600">Retry</a>';$('dash-loading').style.display='block';$('dash-content').style.display='none';const r=$('dash-retry');if(r)r.onclick=ev=>{ev.preventDefault();dashAll=null;$('dash-loading').textContent='Crunching the numbers…';loadDashboard();};}
 async function loadDashboard(){
@@ -541,9 +549,9 @@ async function loadDashboard(){
     const ded=c.deduction!=null?c.deduction:0;
     // claimed = what the hospital billed: for paid claims that's received+deduction; for unpaid, the claim amount on file
     const claimed=paid?(received+ded):(c.claimed_amount!=null?c.claimed_amount:0);
-    const regAt=parseStatusDate(c.ip_registration_dt);      // registration date = "month raised" basis
     const paidAt=parseWfDate(c.paid_date);                   // paid_date is "DD-Mon-YYYY h:mm AM/PM"
     const days=(c.settlement_days!=null)?c.settlement_days:null;
+    const regAt=caseRegDate(c);   // "month raised" basis, with fallbacks (see helper)
     if(regAt){const rk=monKey(regAt);monCount[rk]=(monCount[rk]||0)+1;cohRaised[rk]=(cohRaised[rk]||0)+1;}
     const procName=c.procedure_name?(String(c.procedure_name).replace(/\s*\(.*$/,'').trim()||'(unspecified)'):null;
     if(procName){procCount[procName]=(procCount[procName]||0)+1;const ps=(procStats[procName]=procStats[procName]||{count:0,lagSum:0,lagN:0,dedSum:0,claimedSum:0});ps.count++;}
@@ -581,19 +589,26 @@ async function loadDashboard(){
   $('m-old').textContent=inrShort(oldVal);$('m-old-n').textContent=oldN.toLocaleString()+' claims';
   animateNum($('m-paidn'),paidCount);
 
-  const months=Object.keys(monMoney).sort();
-  const mlabels=months.map(monLabel);
+  // pick granularity from the full span, then roll every monthly series up to it
+  const gran=granFor([].concat(Object.keys(monMoney),Object.keys(monCount),Object.keys(monPaidCnt),Object.keys(cohRaised)));
+  const RmonMoney=rollup(monMoney,gran),RmonTat=rollup(monTat,gran),RmonDed=rollup(monDed,gran),RmonCount=rollup(monCount,gran),RmonPaidCnt=rollup(monPaidCnt,gran),RcohRaised=rollup(cohRaised,gran),RcohPaid=rollup(cohPaid,gran),RcohPend=rollup(cohPend,gran),RcohLag=rollup(cohLag,gran);
+  const blab=k=>bLabel(k,gran);
+  const months=Object.keys(RmonMoney).sort();
+  const mlabels=months.map(blab);
   const gridClr='rgba(150,150,160,.15)';
-  const baseOpts=extra=>Object.assign({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:12,font:{size:11}}}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{color:gridClr},ticks:{font:{size:10}}}}},extra||{});
+  const xt={grid:{color:gridClr},ticks:{font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:16}};
+  const baseOpts=extra=>Object.assign({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:12,font:{size:11}}}},scales:{x:xt,y:{grid:{color:gridClr},ticks:{font:{size:10}}}}},extra||{});
 
-  makeChart('c-money',{type:'bar',data:{labels:mlabels,datasets:[
-    {label:'Claims raised',data:months.map(k=>monMoney[k].c),backgroundColor:'#6366f1'},
-    {label:'Payments received',data:months.map(k=>monMoney[k].p),backgroundColor:'#10b981'}]},
-    options:baseOpts({scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>inrShort(v)}}}})});
+  // cash flow: grouped bars when monthly, two soft area lines for longer (quarter/year) spans
+  const moneyLine=gran!=='month';
+  makeChart('c-money',{type:moneyLine?'line':'bar',data:{labels:mlabels,datasets:[
+    {label:'Claims raised',data:months.map(k=>RmonMoney[k].c),backgroundColor:moneyLine?'rgba(99,102,241,.14)':'#6366f1',borderColor:'#6366f1',borderWidth:2,fill:moneyLine,tension:.3,pointRadius:moneyLine?2.5:0},
+    {label:'Payments received',data:months.map(k=>RmonMoney[k].p),backgroundColor:moneyLine?'rgba(16,185,129,.16)':'#10b981',borderColor:'#10b981',borderWidth:2,fill:moneyLine,tension:.3,pointRadius:moneyLine?2.5:0}]},
+    options:baseOpts({scales:{x:xt,y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>inrShort(v)}}}})});
 
-  const tatMonths=months.filter(k=>monTat[k]);
-  makeChart('c-tat',{type:'line',data:{labels:tatMonths.map(monLabel),datasets:[
-    {label:'Avg days to settle',data:tatMonths.map(k=>Math.round(monTat[k].s/monTat[k].n)),borderColor:'#f59e0b',backgroundColor:'#f59e0b',tension:.3,fill:false}]},
+  const tatMonths=months.filter(k=>RmonTat[k]&&RmonTat[k].n>0);
+  makeChart('c-tat',{type:'line',data:{labels:tatMonths.map(blab),datasets:[
+    {label:'Avg days to settle',data:tatMonths.map(k=>Math.round(RmonTat[k].s/RmonTat[k].n)),borderColor:'#f59e0b',backgroundColor:'#f59e0b',tension:.3,fill:false}]},
     options:baseOpts()});
 
   makeChart('c-aging',{type:'bar',data:{labels:Object.keys(aging),datasets:[
@@ -607,10 +622,10 @@ async function loadDashboard(){
     options:baseOpts({indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10}}}}})
   });
 
-  const dedMonths=months.filter(k=>monDed[k]&&monDed[k].b>0);
-  makeChart('c-ded',{type:'line',data:{labels:dedMonths.map(monLabel),datasets:[
-    {label:'Deduction %',data:dedMonths.map(k=>+(monDed[k].d/monDed[k].b*100).toFixed(1)),borderColor:'#ef4444',backgroundColor:'#ef4444',tension:.3,fill:false}]},
-    options:baseOpts({scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>v+'%'}}}})});
+  const dedMonths=months.filter(k=>RmonDed[k]&&RmonDed[k].b>0);
+  makeChart('c-ded',{type:'line',data:{labels:dedMonths.map(blab),datasets:[
+    {label:'Deduction %',data:dedMonths.map(k=>+(RmonDed[k].d/RmonDed[k].b*100).toFixed(1)),borderColor:'#ef4444',backgroundColor:'#ef4444',tension:.3,fill:false}]},
+    options:baseOpts({scales:{x:xt,y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>v+'%'}}}})});
 
   makeChart('c-outcome',{
     type:'doughnut',
@@ -618,10 +633,10 @@ async function loadDashboard(){
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:ctx=>ctx.label+': '+inrShort(ctx.parsed)}}}}
   });
 
-  const volMonths=Object.keys(monCount).sort();
+  const volMonths=Object.keys(RmonCount).sort();
   makeChart('c-volume',{
     type:'bar',
-    data:{labels:volMonths.map(monLabel),datasets:[{label:'Claims',data:volMonths.map(k=>monCount[k]),backgroundColor:'#6366f1'}]},
+    data:{labels:volMonths.map(blab),datasets:[{label:'Claims',data:volMonths.map(k=>RmonCount[k]),backgroundColor:'#6366f1'}]},
     options:baseOpts({plugins:{legend:{display:false}}})
   });
 
@@ -633,8 +648,8 @@ async function loadDashboard(){
 
   makeChart('c-dedamt',{
     type:'bar',
-    data:{labels:dedMonths.map(monLabel),datasets:[{label:'Deducted (₹)',data:dedMonths.map(k=>monDed[k].d),backgroundColor:'#ef4444'}]},
-    options:baseOpts({plugins:{legend:{display:false}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>inrShort(v)}}}})
+    data:{labels:dedMonths.map(blab),datasets:[{label:'Deducted (₹)',data:dedMonths.map(k=>RmonDed[k].d),backgroundColor:'#ef4444'}]},
+    options:baseOpts({plugins:{legend:{display:false}},scales:{x:xt,y:{grid:{color:gridClr},ticks:{font:{size:10},callback:v=>inrShort(v)}}}})
   });
 
   const topProc=Object.entries(procCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
@@ -651,19 +666,19 @@ async function loadDashboard(){
     options:baseOpts({indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:gridClr},ticks:{font:{size:10}}},y:{grid:{display:false},ticks:{font:{size:10}}}}})
   });
 
-  const cohMonths=Object.keys(cohRaised).sort();
-  const lagMonths=cohMonths.filter(k=>cohPaid[k]);
+  const cohMonths=Object.keys(RcohRaised).sort();
+  const lagMonths=cohMonths.filter(k=>RcohPaid[k]&&RcohLag[k]!=null);
   makeChart('c-lag',{
     type:'bar',
-    data:{labels:lagMonths.map(monLabel),datasets:[{label:'Avg days to get paid',data:lagMonths.map(k=>Math.round(cohLag[k]/cohPaid[k])),backgroundColor:'#0ea5e9'}]},
+    data:{labels:lagMonths.map(blab),datasets:[{label:'Avg days to get paid',data:lagMonths.map(k=>Math.round(RcohLag[k]/RcohPaid[k])),backgroundColor:'#0ea5e9'}]},
     options:baseOpts({plugins:{legend:{display:false}}})
   });
   makeChart('c-cohort',{
     type:'bar',
-    data:{labels:cohMonths.map(monLabel),datasets:[
-      {label:'Paid',data:cohMonths.map(k=>cohPaid[k]||0),backgroundColor:'#10b981'},
-      {label:'Still pending',data:cohMonths.map(k=>cohPend[k]||0),backgroundColor:'#f59e0b'}]},
-    options:baseOpts({scales:{x:{stacked:true,grid:{color:gridClr},ticks:{font:{size:10}}},y:{stacked:true,grid:{color:gridClr},ticks:{font:{size:10}}}}})
+    data:{labels:cohMonths.map(blab),datasets:[
+      {label:'Paid',data:cohMonths.map(k=>RcohPaid[k]||0),backgroundColor:'#10b981'},
+      {label:'Still pending',data:cohMonths.map(k=>RcohPend[k]||0),backgroundColor:'#f59e0b'}]},
+    options:baseOpts({scales:{x:{stacked:true,grid:{color:gridClr},ticks:{font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:16}},y:{stacked:true,grid:{color:gridClr},ticks:{font:{size:10}}}}})
   });
 
   const fastN=tatDist['0–30']+tatDist['31–60']+tatDist['61–90'], midN=tatDist['91–180'], slowN=tatDist['180+'];
@@ -673,10 +688,10 @@ async function loadDashboard(){
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}}}
   });
 
-  const pcMonths=Object.keys(monPaidCnt).sort();
+  const pcMonths=Object.keys(RmonPaidCnt).sort();
   makeChart('c-paidcnt',{
     type:'bar',
-    data:{labels:pcMonths.map(monLabel),datasets:[{label:'Claims paid',data:pcMonths.map(k=>monPaidCnt[k]),backgroundColor:'#10b981'}]},
+    data:{labels:pcMonths.map(blab),datasets:[{label:'Claims paid',data:pcMonths.map(k=>RmonPaidCnt[k]),backgroundColor:'#10b981'}]},
     options:baseOpts({plugins:{legend:{display:false}}})
   });
 
@@ -897,6 +912,7 @@ async function showDetail(caseNo){
   const {data:cr}=await sb.from('cases').select('*').eq('case_no',caseNo).single();
   const {data:rows}=await sb.from('claim_workflow').select('*').eq('case_no',caseNo).order('row_index');
   const c=cr||{};
+  const amtOK=v=>v!=null&&String(v).trim()!==''&&String(v).trim()!=='-';  // a workflow row shows its amount only when it has one
   $('p-title').textContent=c.case_no||caseNo;$('p-sub').textContent=(c.patient_name||'')+(c.nwh_name?' · '+c.nwh_name:'');
   const info=[['Claim no',c.claim_no],['Card no',c.card_no],['District',c.district],['Mandal',c.mandal],['Village',c.village],['Contact',c.contact_no],['IP no',c.ip_no],['IP registration',c.ip_registration_dt],['Category',c.category],['Procedure',c.procedure_name]];
   let h='<div class="info">'+info.map(([k,v])=>`<div><div class="k">${k}</div><div class="val">${esc(v)||'–'}</div></div>`).join('')+'</div>';
@@ -906,11 +922,10 @@ async function showDetail(caseNo){
   if(!rows||!rows.length){h+=`<div class="empty" style="padding:20px">${esc(c.workflow_note||'No claim workflow captured yet.')}</div>`;}
   else if(wfView==='table'){
     h+=`<table class="wtab"><thead><tr><th>Date &amp; Time</th><th>Role &amp; Name</th><th>Remarks</th><th>Action</th><th style="text-align:right">Amount</th></tr></thead><tbody>`;
-    const amtOK=v=>v!=null&&String(v).trim()!==''&&String(v).trim()!=='-';
     rows.forEach(r=>{h+=`<tr><td class="dt">${esc(r.date_time)}</td><td>${esc(r.role_name)}</td><td class="rm">${fmtRemarks(r.remarks||'')}</td><td>${esc(r.action)}</td><td class="amt">${amtOK(r.amount)?'₹'+esc(r.amount):'–'}</td></tr>`;});
     h+='</tbody></table>';
   }
-  else{h+='<div class="tl">';const amtOK=v=>v!=null&&String(v).trim()!==''&&String(v).trim()!=='-';rows.forEach(r=>{const cl=/hold|stopped|reject/i.test(r.action||'')?' hold':/paid|approv/i.test(r.action||'')?' paid':'';
+  else{h+='<div class="tl">';rows.forEach(r=>{const cl=/hold|stopped|reject/i.test(r.action||'')?' hold':/paid|approv/i.test(r.action||'')?' paid':'';
     h+=`<div class="step${cl}"><div class="h">${esc(r.action)} · ${esc(r.role_name)} <span class="w">· ${esc(r.date_time)}${amtOK(r.amount)?' · ₹'+esc(r.amount):''}</span></div><div class="r">${fmtRemarks(r.remarks||'')}</div></div>`;});h+='</div>';}
   $('p-body').innerHTML=h;$('overlay').style.display='block';$('panel').classList.add('open');
   const setV=v=>{wfView=v;localStorage.setItem('vc-wfview',v);showDetail(caseNo);};
